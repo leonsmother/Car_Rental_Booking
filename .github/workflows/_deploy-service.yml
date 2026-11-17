@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       service-dir:
-        description: Folder of the service, e.g. services/catalogue
+        description: Folder that holds template.yaml, e.g. services/catalogue or infra/auth
         required: true
         type: string
       stack-name:
@@ -16,6 +16,11 @@ on:
         required: false
         type: string
         default: ""
+      node-project:
+        description: true for services with package.json and tests; false for infra stacks (auth, monitoring)
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   id-token: write   # needed for OIDC sign-in to AWS
@@ -24,6 +29,10 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Never run two deploys of the same stack at the same time
+    concurrency:
+      group: deploy-${{ inputs.stack-name }}
+      cancel-in-progress: false
     defaults:
       run:
         working-directory: ${{ inputs.service-dir }}
@@ -31,35 +40,54 @@ jobs:
       - name: Get the code
         uses: actions/checkout@v4
 
+      - name: Is there a template.yaml yet?
+        id: check
+        working-directory: .
+        run: |
+          if [ -f "${{ inputs.service-dir }}/template.yaml" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No template.yaml in ${{ inputs.service-dir }} yet - nothing to deploy, skipping."
+          fi
+
       - name: Set up Node.js 22
+        if: steps.check.outputs.ready == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
 
       - name: Install dependencies (needs package-lock.json committed)
+        if: steps.check.outputs.ready == 'true' && inputs.node-project
         run: npm ci
 
       - name: Run tests
+        if: steps.check.outputs.ready == 'true' && inputs.node-project
         run: npm test
 
       - name: Check dependencies for known vulnerabilities
+        if: steps.check.outputs.ready == 'true' && inputs.node-project
         run: npm audit --audit-level=high --omit=dev
 
       - name: Sign in to AWS with OIDC (no stored keys)
+        if: steps.check.outputs.ready == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
       - name: Set up AWS SAM CLI
+        if: steps.check.outputs.ready == 'true'
         uses: aws-actions/setup-sam@v2
         with:
           use-installer: true
 
       - name: Build
+        if: steps.check.outputs.ready == 'true'
         run: sam build
 
       - name: Deploy this one stack
+        if: steps.check.outputs.ready == 'true'
         run: >
           sam deploy
           --stack-name ${{ inputs.stack-name }}
@@ -69,7 +97,8 @@ jobs:
           --no-fail-on-empty-changeset
           ${{ inputs.parameter-overrides != '' && format('--parameter-overrides {0}', inputs.parameter-overrides) || '' }}
 
-      - name: Show the API URL
+      - name: Show the stack outputs (API URL, IDs)
+        if: steps.check.outputs.ready == 'true'
         run: >
           aws cloudformation describe-stacks
           --stack-name ${{ inputs.stack-name }}
