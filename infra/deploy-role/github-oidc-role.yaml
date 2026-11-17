@@ -1,0 +1,70 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: GitHub OIDC Provider and Least-Privilege SAM Deploy Role for Car Rental Booking
+
+Parameters:
+  GitHubRepo:
+    Type: String
+    Default: leonsmother/Car_Rental_Booking
+    Description: GitHub repository in owner/repo format
+
+Resources:
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+
+  GitHubActionsDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHubActionsSAMDeployRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOIDCProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:*"
+      Policies:
+        - PolicyName: CarRentalSAMDeployPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - s3:*
+                  - lambda:*
+                  - apigateway:*
+                  - dynamodb:*
+                  - cognito-idp:*
+                  - events:*
+                  - sns:*
+                  - sqs:*
+                  - logs:*
+                  - cloudwatch:*
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:TagRole
+                Resource: "*"
+
+Outputs:
+  DeployRoleArn:
+    Description: ARN of the IAM Role for GitHub Actions
+    Value: !GetAtt GitHubActionsDeployRole.Arn
