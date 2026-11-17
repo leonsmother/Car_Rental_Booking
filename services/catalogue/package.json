@@ -1,0 +1,18 @@
+{
+  "name": "car-rental-catalogue",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Catalogue service (Group 24, owner: Jana)",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/local.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "serverless-http": "^3.2.0"
+  }
+}

@@ -1,0 +1,58 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Group 24 - Catalogue service (cars, offices, prices)
+
+Parameters:
+  FrontendOrigin:
+    Type: String
+    Description: The website address allowed by CORS (no wildcard), e.g. https://car-rental.vercel.app
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 10
+
+Resources:
+  CatalogueApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontendOrigin
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, X-Request-Id]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+      # Week 2: add the Cognito JWT authorizer here (needs the auth stack's IDs from Ghada)
+
+  CatalogueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/app.handler
+      Description: Catalogue service (Express on Lambda)
+      Environment:
+        Variables:
+          SERVICE_NAME: catalogue
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref CatalogueApi
+            Path: /health
+            Method: GET
+
+  CatalogueLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${CatalogueFunction}
+      RetentionInDays: 14
+
+Outputs:
+  CatalogueApiUrl:
+    Description: Base URL of the Catalogue API (share this with the team)
+    Value: !Sub https://${CatalogueApi}.execute-api.${AWS::Region}.amazonaws.com
