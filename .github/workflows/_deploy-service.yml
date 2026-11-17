@@ -1,0 +1,77 @@
+name: _deploy-service
+
+on:
+  workflow_call:
+    inputs:
+      service-dir:
+        description: Folder of the service, e.g. services/catalogue
+        required: true
+        type: string
+      stack-name:
+        description: CloudFormation stack name, e.g. car-rental-catalogue
+        required: true
+        type: string
+      parameter-overrides:
+        description: Extra SAM parameters, e.g. "FrontendOrigin=https://..."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  id-token: write   # needed for OIDC sign-in to AWS
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.service-dir }}
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies (needs package-lock.json committed)
+        run: npm ci
+
+      - name: Run tests
+        run: npm test
+
+      - name: Check dependencies for known vulnerabilities
+        run: npm audit --audit-level=high --omit=dev
+
+      - name: Sign in to AWS with OIDC (no stored keys)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Build
+        run: sam build
+
+      - name: Deploy this one stack
+        run: >
+          sam deploy
+          --stack-name ${{ inputs.stack-name }}
+          --resolve-s3
+          --capabilities CAPABILITY_IAM
+          --no-confirm-changeset
+          --no-fail-on-empty-changeset
+          ${{ inputs.parameter-overrides != '' && format('--parameter-overrides {0}', inputs.parameter-overrides) || '' }}
+
+      - name: Show the API URL
+        run: >
+          aws cloudformation describe-stacks
+          --stack-name ${{ inputs.stack-name }}
+          --query "Stacks[0].Outputs"
+          --output table

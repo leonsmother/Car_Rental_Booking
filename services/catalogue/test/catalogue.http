@@ -1,0 +1,13 @@
+# Local (npm start)
+@local = http://localhost:3001
+# Deployed: paste the CatalogueApiUrl output here after the first deploy
+@cloud = https://REPLACE-ME.execute-api.eu-central-1.amazonaws.com
+
+### Health check (local) -> expect 200
+GET {{local}}/health
+
+### Health check (cloud) -> expect 200
+GET {{cloud}}/health
+
+### Unknown route (cloud) -> expect 404 from API Gateway
+GET {{cloud}}/does-not-exist

@@ -1,0 +1,23 @@
+name: Deploy catalogue
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/catalogue/**"
+      - "shared/**"
+      - ".github/workflows/deploy-catalogue.yml"
+      - ".github/workflows/_deploy-service.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service-dir: services/catalogue
+      stack-name: car-rental-catalogue
+      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"
