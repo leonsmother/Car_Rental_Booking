@@ -17,7 +17,7 @@ app.get("/health", (req, res) => {
   res.json({ service: "catalogue", status: "ok" });
 });
 
-// C1, C2, C7 (more routes are added in catalogue.routes.js)
+// C1-C7 (all routes live in catalogue.routes.js)
 app.use(catalogueRoutes);
 
 // Anything not listed above
@@ -25,11 +25,20 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-// Any unexpected error: log it, but never send database details to the user
+// Errors: clear answers for bad JSON, and never send database details to the user
 app.use((err, req, res, next) => {
-  console.error(JSON.stringify({ level: "error", path: req.path, message: err.message }));
+  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Body must be valid JSON" });
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "Body is too large" });
+  console.error(JSON.stringify({ level: "error", method: req.method, path: req.path, message: err.message }));
   res.status(500).json({ error: "Something went wrong" });
 });
 
 module.exports.app = app;
-module.exports.handler = serverless(app);
+
+// On Lambda: keep the original API Gateway event on the request,
+// so auth.js can read the login details (claims) the JWT authorizer checked.
+module.exports.handler = serverless(app, {
+  request(req, event) {
+    req.lambdaEvent = event;
+  },
+});
