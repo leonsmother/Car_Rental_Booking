@@ -50,6 +50,22 @@ async function geocode(query) {
   return place;
 }
 
+// Find an office address. Nominatim is strict about extra words, so we try up to 3 versions:
+//   1. address + city (city not repeated if the address already contains it)
+//   2. the address on its own
+//   3. just the city -> approximate (the office is placed at the city centre)
+// Returns { lat, lon, label, approximate } or null if nothing was found.
+async function geocodeAddress(address, city) {
+  const hasCity = address.toLowerCase().includes(city.toLowerCase());
+  const candidates = [...new Set([hasCity ? address : `${address}, ${city}`, address, city])];
+
+  for (const query of candidates) {
+    const place = await geocode(query);
+    if (place) return { ...place, approximate: query === city };
+  }
+  return null;
+}
+
 // Straight-line distance between two points on Earth, in km (haversine formula)
 function distanceKm(a, b) {
   const R = 6371;
@@ -60,4 +76,4 @@ function distanceKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
-module.exports = { geocode, distanceKm };
+module.exports = { geocode, geocodeAddress, distanceKm };

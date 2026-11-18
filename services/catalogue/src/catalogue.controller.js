@@ -283,10 +283,11 @@ async function updateOffice(req, res, next) {
     if (changes.address || changes.city) {
       const current = await service.getOffice(officeId);
       if (!current) return res.status(404).json({ error: "Office not found" });
-      const fullAddress = `${changes.address ?? current.address}, ${changes.city ?? current.city}`;
       try {
-        geo = await nominatim.geocode(fullAddress);
+        geo = await nominatim.geocodeAddress(changes.address ?? current.address, changes.city ?? current.city);
         if (!geo) warning = "Saved, but the new address was not found on the map, so it will not appear in nearest-office results";
+        else if (geo.approximate) warning = "Saved, but the exact address was not found, so the office is shown at the city centre";
+        if (geo) geo = { lat: geo.lat, lon: geo.lon };
       } catch (err) {
         geo = null;
         warning = "Saved, but the map service is down, so the map position could not be updated";
