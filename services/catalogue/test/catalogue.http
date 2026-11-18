@@ -7,6 +7,13 @@
 # Deployed: paste the CatalogueApiUrl output here after the first deploy
 @cloud = https://REPLACE-ME.execute-api.eu-central-1.amazonaws.com
 
+# The fixed IDs from db/seed.sql
+@officeA = a1a1a1a1-0000-4000-8000-000000000001
+@officeB = a1a1a1a1-0000-4000-8000-000000000002
+@car1 = c0c0c0c0-0000-4000-8000-000000000001
+@car2 = c0c0c0c0-0000-4000-8000-000000000002
+@car4 = c0c0c0c0-0000-4000-8000-000000000004
+
 ########## Public routes (no login) ##########
 
 ### Health check -> 200
@@ -15,14 +22,14 @@ GET {{local}}/health
 ### C7: all offices -> 200, 3 offices
 GET {{local}}/offices
 
-### C2: car 1 -> 200
+### C2: car 1 -> 200 (Hyundai Accent)
+GET {{local}}/cars/{{car1}}
+
+### C2: a UUID that does not exist -> 404
+GET {{local}}/cars/00000000-0000-4000-8000-000000000000
+
+### C2: not a UUID -> 400
 GET {{local}}/cars/1
-
-### C2: car that does not exist -> 404
-GET {{local}}/cars/9999
-
-### C2: bad id -> 400
-GET {{local}}/cars/abc
 
 ### C1: all available cars -> 200, cheapest first
 GET {{local}}/cars
@@ -30,26 +37,26 @@ GET {{local}}/cars
 ### C1: SUVs only -> 200
 GET {{local}}/cars?category=suv
 
-### C1: office 1, max 1500 EGP/day -> 200
-GET {{local}}/cars?office=1&maxPrice=1500
+### C1: office A, max 1500 EGP/day -> 200
+GET {{local}}/cars?office={{officeA}}&maxPrice=1500
 
 ### C1: unknown category -> 400
 GET {{local}}/cars?category=spaceship
 
 ########## Staff routes (pretend login with x-dev-user, local only) ##########
 
-### C6: my office's cars (staff of office 1) -> 200
-GET {{local}}/offices/1/cars
-x-dev-user: staff:1
+### C6: my office's cars (staff of office A) -> 200
+GET {{local}}/offices/{{officeA}}/cars
+x-dev-user: staff:{{officeA}}
 
 ### C6: another office's cars -> 404
-GET {{local}}/offices/2/cars
-x-dev-user: staff:1
+GET {{local}}/offices/{{officeB}}/cars
+x-dev-user: staff:{{officeA}}
 
 ### C3: add a car -> 201 (run twice -> 409, same plate)
 POST {{local}}/cars
 Content-Type: application/json
-x-dev-user: staff:1
+x-dev-user: staff:{{officeA}}
 
 {
   "plate": "JNA 777",
@@ -64,13 +71,7 @@ POST {{local}}/cars
 Content-Type: application/json
 x-dev-user: customer
 
-{
-  "plate": "JNA 778",
-  "make": "Toyota",
-  "model": "Yaris",
-  "category": "economy",
-  "dailyPrice": 950
-}
+{ "plate": "JNA 778", "make": "Toyota", "model": "Yaris", "category": "economy", "dailyPrice": 950 }
 
 ### C3: not logged in -> 401
 POST {{local}}/cars
@@ -79,25 +80,61 @@ Content-Type: application/json
 { "plate": "JNA 779", "make": "Toyota", "model": "Yaris", "category": "economy", "dailyPrice": 950 }
 
 ### C4: change car 1's price and put it in maintenance -> 200
-PUT {{local}}/cars/1
+PUT {{local}}/cars/{{car1}}
 Content-Type: application/json
-x-dev-user: staff:1
+x-dev-user: staff:{{officeA}}
 
 {
   "dailyPrice": 1000,
   "status": "maintenance"
 }
 
-### C4: car 4 belongs to office 2 -> 404 for staff of office 1
-PUT {{local}}/cars/4
+### C4: car 4 belongs to office B -> 404 for staff of office A
+PUT {{local}}/cars/{{car4}}
 Content-Type: application/json
-x-dev-user: staff:1
+x-dev-user: staff:{{officeA}}
 
 { "dailyPrice": 1 }
 
 ### C5: retire car 2 -> 204 (run again -> 404, already retired)
-DELETE {{local}}/cars/2
-x-dev-user: staff:1
+DELETE {{local}}/cars/{{car2}}
+x-dev-user: staff:{{officeA}}
+
+########## C8 / C9: offices and the map (Nominatim) ##########
+### First time only: give the seeded offices their map positions:  npm run geocode-offices
+
+### C8: offices nearest to Nasr City -> 200, nearest first, with distance_km
+GET {{local}}/offices/nearest?location=Nasr City, Cairo
+
+### C8: nearest 2 offices to Alexandria -> 200
+GET {{local}}/offices/nearest?location=Alexandria&limit=2
+
+### C8: a place that does not exist -> 404
+GET {{local}}/offices/nearest?location=Qwertyuiopville
+
+### C8: no location -> 400
+GET {{local}}/offices/nearest
+
+### C9: change office A's phone (no map lookup) -> 200
+PUT {{local}}/offices/{{officeA}}
+Content-Type: application/json
+x-dev-user: staff:{{officeA}}
+
+{ "phone": "+20 2 1234 5678" }
+
+### C9: change office A's address -> 200, new latitude/longitude from Nominatim
+PUT {{local}}/offices/{{officeA}}
+Content-Type: application/json
+x-dev-user: staff:{{officeA}}
+
+{ "address": "Talaat Harb Street, Downtown, Cairo" }
+
+### C9: staff of office A edits office B -> 404
+PUT {{local}}/offices/{{officeB}}
+Content-Type: application/json
+x-dev-user: staff:{{officeA}}
+
+{ "name": "Not my office" }
 
 ### Cloud health check -> 200 (once deploying works)
 GET {{cloud}}/health
