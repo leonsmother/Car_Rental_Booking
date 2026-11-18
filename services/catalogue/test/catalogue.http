@@ -1,13 +1,37 @@
-# Local (npm start)
+ Local (npm start)
 @local = http://localhost:3001
 # Deployed: paste the CatalogueApiUrl output here after the first deploy
 @cloud = https://REPLACE-ME.execute-api.eu-central-1.amazonaws.com
 
-### Health check (local) -> expect 200
+### Health check -> 200
 GET {{local}}/health
 
-### Health check (cloud) -> expect 200
-GET {{cloud}}/health
+### C7: all offices -> 200, 3 offices
+GET {{local}}/offices
 
-### Unknown route (cloud) -> expect 404 from API Gateway
-GET {{cloud}}/does-not-exist
+### C2: car 1 -> 200
+GET {{local}}/cars/1
+
+### C2: car that does not exist -> 404
+GET {{local}}/cars/9999
+
+### C2: bad id -> 400
+GET {{local}}/cars/abc
+
+### C1: all available cars -> 200, 7 cars, cheapest first
+GET {{local}}/cars
+
+### C1: SUVs only -> 200
+GET {{local}}/cars?category=suv
+
+### C1: office 1, max 1500 EGP/day -> 200
+GET {{local}}/cars?office=1&maxPrice=1500
+
+### C1: unknown category -> 400
+GET {{local}}/cars?category=spaceship
+
+### C1: unknown filter -> 400
+GET {{local}}/cars?colour=red
+
+### Cloud health check -> 200 (once deploying works)
+GET {{cloud}}/health

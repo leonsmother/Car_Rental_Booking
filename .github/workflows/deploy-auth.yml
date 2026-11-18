@@ -1,0 +1,22 @@
+name: Deploy auth
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/auth/**"
+      - ".github/workflows/deploy-auth.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service-dir: infra/auth
+      stack-name: car-rental-auth
+      node-project: false   # no npm tests at this level; the trigger's code is built by SAM
+      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"
