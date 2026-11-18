@@ -1,0 +1,22 @@
+name: Deploy inspection
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/inspection/**"
+      - "shared/**"
+      - ".github/workflows/deploy-inspection.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service-dir: services/inspection
+      stack-name: car-rental-inspection
+      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"

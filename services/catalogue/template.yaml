@@ -1,3 +1,6 @@
+# Catalogue service - its own SAM stack: car-rental-catalogue (owner: Jana)
+# Week 1: only GET /health. Routes C1-C11 are added here as they are built,
+# one Events entry per route (no catch-all route, so every function has a route).
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Group 24 - Catalogue service (cars, offices, prices)
