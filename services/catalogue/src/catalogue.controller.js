@@ -2,18 +2,28 @@
 // Bad input -> 400 before the database is touched. Not found / not yours -> 404.
 
 const service = require("./catalogue.service");
+const nominatim = require("./nominatim");
 
 const CATEGORIES = ["economy", "compact", "sedan", "suv", "van", "luxury"];
 const SEARCH_FIELDS = ["category", "office", "maxPrice", "from", "to"];
 const CAR_FIELDS = ["plate", "make", "model", "category", "dailyPrice"];
 const EDIT_FIELDS = ["category", "dailyPrice", "status"];
 const EDIT_STATUSES = ["available", "maintenance"]; // "retired" only through DELETE (C5)
+const NEAREST_FIELDS = ["location", "limit"];
+const OFFICE_FIELDS = ["name", "address", "city", "phone"];
 
 // ---------- small helpers ----------
 
 // A whole number greater than 0, or null if it is not one
 function positiveInt(value) {
   return /^[1-9]\d*$/.test(String(value)) ? Number(value) : null;
+}
+
+// A UUID like 3f2a9c1e-5b7d-4e8a-9c21-7d4e5f6a8b90 (lower-cased), or null if it is not one
+function uuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value))
+    ? String(value).toLowerCase()
+    : null;
 }
 
 // A price > 0, at most 100000, at most 2 decimals; or null
@@ -49,8 +59,8 @@ async function listOffices(req, res, next) {
 // GET /cars/:carId (C2)
 async function getCar(req, res, next) {
   try {
-    const carId = positiveInt(req.params.carId);
-    if (!carId) return res.status(400).json({ error: "carId must be a positive whole number" });
+    const carId = uuid(req.params.carId);
+    if (!carId) return res.status(400).json({ error: "carId must be a valid ID (UUID)" });
 
     const car = await service.getCar(carId);
     if (!car) return res.status(404).json({ error: "Car not found" });
@@ -75,8 +85,8 @@ async function searchCars(req, res, next) {
 
     let officeId = null;
     if (office) {
-      officeId = positiveInt(office);
-      if (!officeId) return res.status(400).json({ error: "office must be a positive whole number" });
+      officeId = uuid(office);
+      if (!officeId) return res.status(400).json({ error: "office must be a valid office ID (UUID)" });
     }
 
     let price = null;
@@ -132,8 +142,8 @@ async function createCar(req, res, next) {
 // PUT /cars/:carId (C4) body: any of { category, dailyPrice, status }
 async function updateCar(req, res, next) {
   try {
-    const carId = positiveInt(req.params.carId);
-    if (!carId) return res.status(400).json({ error: "carId must be a positive whole number" });
+    const carId = uuid(req.params.carId);
+    if (!carId) return res.status(400).json({ error: "carId must be a valid ID (UUID)" });
 
     const body = req.body || {};
     const unknown = unknownFields(body, EDIT_FIELDS);
@@ -167,8 +177,8 @@ async function updateCar(req, res, next) {
 // DELETE /cars/:carId (C5): retire, not a real delete
 async function retireCar(req, res, next) {
   try {
-    const carId = positiveInt(req.params.carId);
-    if (!carId) return res.status(400).json({ error: "carId must be a positive whole number" });
+    const carId = uuid(req.params.carId);
+    if (!carId) return res.status(400).json({ error: "carId must be a valid ID (UUID)" });
 
     const done = await service.retireCar(carId, req.user.officeId, req.user.id);
     if (!done) return res.status(404).json({ error: "Car not found in your office" });
@@ -181,8 +191,8 @@ async function retireCar(req, res, next) {
 // GET /offices/:officeId/cars (C6): staff can only list THEIR office
 async function listOfficeCars(req, res, next) {
   try {
-    const officeId = positiveInt(req.params.officeId);
-    if (!officeId) return res.status(400).json({ error: "officeId must be a positive whole number" });
+    const officeId = uuid(req.params.officeId);
+    if (!officeId) return res.status(400).json({ error: "officeId must be a valid ID (UUID)" });
 
     // Another office -> 404, so nobody learns what other offices have
     if (officeId !== req.user.officeId) return res.status(404).json({ error: "Office not found" });
@@ -193,4 +203,106 @@ async function listOfficeCars(req, res, next) {
   }
 }
 
-module.exports = { listOffices, getCar, searchCars, createCar, updateCar, retireCar, listOfficeCars };
+// GET /offices/nearest?location=Nasr City&limit=5 (C8, anyone)
+async function nearestOffices(req, res, next) {
+  try {
+    const unknown = unknownFields(req.query, NEAREST_FIELDS);
+    if (unknown.length) return res.status(400).json({ error: `Unknown filter: ${unknown.join(", ")}` });
+
+    const location = text(req.query.location, 2, 100);
+    if (!location) return res.status(400).json({ error: "location is required (2-100 characters), e.g. ?location=Nasr City" });
+
+    let limit = 5;
+    if (req.query.limit !== undefined) {
+      limit = positiveInt(req.query.limit);
+      if (!limit || limit > 20) return res.status(400).json({ error: "limit must be a whole number from 1 to 20" });
+    }
+
+    // 1. Ask Nominatim where that place is
+    let place;
+    try {
+      place = await nominatim.geocode(location);
+    } catch (err) {
+      console.error(JSON.stringify({ level: "warn", service: "nominatim", message: err.message }));
+      return res.status(502).json({ error: "The map service is not available right now. You can still search cars by office." });
+    }
+    if (!place) return res.status(404).json({ error: "We could not find that location. Try a city or area name." });
+
+    // 2. Work out each office's distance and sort, nearest first
+    const offices = await service.listOfficesWithCoords();
+    const nearest = offices
+      .map((o) => ({
+        ...o,
+        distance_km: Math.round(nominatim.distanceKm(place, { lat: Number(o.latitude), lon: Number(o.longitude) }) * 10) / 10,
+      }))
+      .sort((a, b) => a.distance_km - b.distance_km)
+      .slice(0, limit);
+
+    res.json({ location: { query: location, label: place.label, lat: place.lat, lon: place.lon }, offices: nearest });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// PUT /offices/:officeId (C9, staff of THAT office) body: any of { name, address, city, phone }
+async function updateOffice(req, res, next) {
+  try {
+    const officeId = uuid(req.params.officeId);
+    if (!officeId) return res.status(400).json({ error: "officeId must be a valid ID (UUID)" });
+    if (officeId !== req.user.officeId) return res.status(404).json({ error: "Office not found" });
+
+    const body = req.body || {};
+    const unknown = unknownFields(body, OFFICE_FIELDS);
+    if (unknown.length) return res.status(400).json({ error: `You can only change: ${OFFICE_FIELDS.join(", ")}` });
+    if (!Object.keys(body).length) return res.status(400).json({ error: "Send at least one field to change" });
+
+    const changes = {};
+    if (body.name !== undefined) {
+      changes.name = text(body.name, 2, 100);
+      if (!changes.name) return res.status(400).json({ error: "name must be 2-100 characters" });
+    }
+    if (body.address !== undefined) {
+      changes.address = text(body.address, 5, 200);
+      if (!changes.address) return res.status(400).json({ error: "address must be 5-200 characters" });
+    }
+    if (body.city !== undefined) {
+      changes.city = text(body.city, 2, 60);
+      if (!changes.city) return res.status(400).json({ error: "city must be 2-60 characters" });
+    }
+    if (body.phone !== undefined) {
+      if (typeof body.phone !== "string" || !/^[+0-9 ()-]{6,20}$/.test(body.phone)) {
+        return res.status(400).json({ error: "phone may only contain digits, spaces, + - ( ) and be 6-20 characters" });
+      }
+      changes.phone = body.phone;
+    }
+
+    // Address or city changed -> look up the new map position.
+    // If Nominatim fails, we still save (as the proposal says) but clear the old, now wrong, position.
+    let geo;
+    let warning = null;
+    if (changes.address || changes.city) {
+      const current = await service.getOffice(officeId);
+      if (!current) return res.status(404).json({ error: "Office not found" });
+      try {
+        geo = await nominatim.geocodeAddress(changes.address ?? current.address, changes.city ?? current.city);
+        if (!geo) warning = "Saved, but the new address was not found on the map, so it will not appear in nearest-office results";
+        else if (geo.approximate) warning = "Saved, but the exact address was not found, so the office is shown at the city centre";
+        if (geo) geo = { lat: geo.lat, lon: geo.lon };
+      } catch (err) {
+        geo = null;
+        warning = "Saved, but the map service is down, so the map position could not be updated";
+      }
+    }
+
+    const updated = await service.updateOffice(officeId, changes, geo, req.user.id);
+    if (!updated) return res.status(404).json({ error: "Office not found" });
+    res.json(warning ? { ...updated, warning } : updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+module.exports = {
+  listOffices, getCar, searchCars, createCar, updateCar, retireCar, listOfficeCars,
+  nearestOffices, updateOffice,
+};

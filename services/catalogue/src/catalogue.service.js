@@ -140,7 +140,77 @@ async function listOfficeCars(officeId) {
   );
 }
 
+// ---------- offices and map positions (C8, C9) ----------
+
+// C8: offices that have map coordinates (the distance is worked out in the controller)
+async function listOfficesWithCoords() {
+  return db.query(
+    `SELECT id, name, city, address, latitude, longitude, phone
+       FROM catalogue.offices
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL`
+  );
+}
+
+// One office (C9 needs the current address when only the city or only the address changes)
+async function getOffice(officeId) {
+  const rows = await db.query(
+    `SELECT id, name, city, address, latitude, longitude, phone FROM catalogue.offices WHERE id = $1`,
+    [officeId]
+  );
+  return rows[0] || null;
+}
+
+// C9: change name/address/city/phone of the staff member's OWN office.
+// geo: undefined = address not changed (keep coordinates)
+//      { lat, lon } = new coordinates from Nominatim
+//      null = address changed but Nominatim failed (clear the old, now wrong, coordinates)
+async function updateOffice(officeId, changes, geo, actorId) {
+  const columns = { name: "name", address: "address", city: "city", phone: "phone" };
+  const sets = [];
+  const params = [];
+
+  for (const [field, column] of Object.entries(columns)) {
+    if (changes[field] !== undefined) {
+      params.push(changes[field]);
+      sets.push(`${column} = $${params.length}`);
+    }
+  }
+  if (geo !== undefined) {
+    params.push(geo ? geo.lat : null);
+    sets.push(`latitude = $${params.length}`);
+    params.push(geo ? geo.lon : null);
+    sets.push(`longitude = $${params.length}`);
+    sets.push(geo ? "geocoded_at = now()" : "geocoded_at = NULL");
+  }
+  params.push(officeId);
+
+  const rows = await db.query(
+    `UPDATE catalogue.offices
+        SET ${sets.join(", ")}, updated_at = now()
+      WHERE id = $${params.length}
+      RETURNING id, name, city, address, latitude, longitude, phone`,
+    params
+  );
+  if (rows[0]) await audit(actorId, "office.update", officeId, changes);
+  return rows[0] || null;
+}
+
+// Setup script: offices that still have no coordinates (e.g. right after seed.sql)
+async function listOfficesMissingCoords() {
+  return db.query(
+    `SELECT id, name, city, address FROM catalogue.offices WHERE latitude IS NULL OR longitude IS NULL`
+  );
+}
+
+async function setOfficeCoords(officeId, lat, lon) {
+  await db.query(
+    `UPDATE catalogue.offices SET latitude = $1, longitude = $2, geocoded_at = now() WHERE id = $3`,
+    [lat, lon, officeId]
+  );
+}
+
 module.exports = {
   listOffices, getCar, searchCars,
   getStaffOfficeId, createCar, updateCar, retireCar, listOfficeCars,
+  listOfficesWithCoords, getOffice, updateOffice, listOfficesMissingCoords, setOfficeCoords,
 };
