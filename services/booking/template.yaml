@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Booking service (Eman) - own API, Lambda and permissions
+
+Parameters:
+  UserPoolId:
+    Type: String
+    Description: Cognito User Pool ID (from the auth stack outputs)
+  UserPoolClientId:
+    Type: String
+    Description: Cognito App Client ID (from the auth stack outputs)
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures:
+      - x86_64
+    Timeout: 30
+    MemorySize: 256
+
+Resources:
+  BookingApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Auth:
+        # Every route needs a valid login token unless it says Authorizer: NONE
+        DefaultAuthorizer: CognitoJwt
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+
+  BookingFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/app.handler
+      Events:
+        Health:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BookingApi
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE   # public health check, no login needed
+
+Outputs:
+  BookingApiUrl:
+    Description: Booking API URL (goes in frontend/js/config.js and the other services)
+    Value: !Sub https://${BookingApi}.execute-api.${AWS::Region}.amazonaws.com
