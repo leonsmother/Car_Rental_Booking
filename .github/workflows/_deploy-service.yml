@@ -1,0 +1,67 @@
+name: Reusable Service Deploy
+
+on:
+  workflow_call:
+    inputs:
+      service_name:
+        required: true
+        type: string
+      working_directory:
+        required: true
+        type: string
+      stack_name:
+        required: true
+        type: string
+      db_ssm_param:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies & run security audit
+        run: |
+          if [ -f package.json ]; then
+            npm install
+            npm audit --audit-level=high || true
+          fi
+
+      - name: Setup AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Build and Deploy SAM Stack
+        run: |
+          sam build
+          sam deploy \
+            --stack-name ${{ inputs.stack_name }} \
+            --region ${{ vars.AWS_REGION }} \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              UserPoolId=${{ vars.COGNITO_USER_POOL_ID }} \
+              UserPoolClientId=${{ vars.COGNITO_USER_POOL_CLIENT_ID }} \
+              DbSsmParam=${{ inputs.db_ssm_param }}

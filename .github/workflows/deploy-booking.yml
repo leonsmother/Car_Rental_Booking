@@ -1,0 +1,23 @@
+name: Deploy Booking Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/booking/**"
+      - "shared/**"
+      - ".github/workflows/deploy-booking.yml"
+      - ".github/workflows/_deploy-service.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service_name: booking
+      working_directory: services/booking
+      stack_name: car-rental-booking
+      db_ssm_param: /car-rental/booking/DATABASE_URL

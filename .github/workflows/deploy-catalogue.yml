@@ -1,0 +1,23 @@
+name: Deploy Catalogue Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/catalogue/**"
+      - "shared/**"
+      - ".github/workflows/deploy-catalogue.yml"
+      - ".github/workflows/_deploy-service.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service_name: catalogue
+      working_directory: services/catalogue
+      stack_name: car-rental-catalogue
+      db_ssm_param: /car-rental/catalogue/DATABASE_URL

@@ -1,0 +1,23 @@
+name: Deploy Inspection Service
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/inspection/**"
+      - "shared/**"
+      - ".github/workflows/deploy-inspection.yml"
+      - ".github/workflows/_deploy-service.yml"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service_name: inspection
+      working_directory: services/inspection
+      stack_name: car-rental-inspection
+      db_ssm_param: /car-rental/inspection/DATABASE_URL
