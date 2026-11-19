@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Monitoring stack (Eman): one SNS topic that emails the team, plus an
+  AWS Budgets alert at $5. Service stacks use the topic ARN for their
+  CloudWatch alarms.
+
+Parameters:
+  # Matches deploy-monitoring.yml, which passes AlertEmail=${{ vars.ALERT_EMAIL }}
+  AlertEmail:
+    Type: String
+    Description: Email that receives alarm and budget emails
+    AllowedPattern: '[^@\s]+@[^@\s]+\.[^@\s]+'
+  # Optional extra team emails; leave empty to skip
+  AlertEmail2:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|[^@\s]+@[^@\s]+\.[^@\s]+'
+  AlertEmail3:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|[^@\s]+@[^@\s]+\.[^@\s]+'
+
+Conditions:
+  HasEmail2:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: AlertEmail2
+          - ''
+  HasEmail3:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: AlertEmail3
+          - ''
+
+Resources:
+  AlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: car-rental-alerts
+      DisplayName: Car Rental alerts
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlertEmail
+
+  AlertSubscription2:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail2
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail2
+
+  AlertSubscription3:
+    Type: AWS::SNS::Subscription
+    Condition: HasEmail3
+    Properties:
+      TopicArn: !Ref AlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail3
+
+  # Lets CloudWatch alarms and AWS Budgets publish to the topic
+  # (same AWS account only).
+  AlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref AlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudWatchAlarms
+            Effect: Allow
+            Principal:
+              Service: cloudwatch.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+          - Sid: AllowBudgets
+            Effect: Allow
+            Principal:
+              Service: budgets.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  MonthlyBudget:
+    Type: AWS::Budgets::Budget
+    DependsOn: AlertTopicPolicy
+    Properties:
+      Budget:
+        BudgetName: car-rental-group24-monthly
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit:
+          Amount: 5   # US dollars per month (team limit)
+          Unit: USD
+      NotificationsWithSubscribers:
+        # Early warning at 80% of the limit
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref AlertTopic
+        # Spending has passed the limit
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: SNS
+              Address: !Ref AlertTopic
+
+Outputs:
+  AlertTopicArn:
+    Description: SNS topic ARN (goes into each service's alarm actions)
+    Value: !Ref AlertTopic
