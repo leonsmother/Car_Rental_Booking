@@ -64,7 +64,7 @@ async function searchCars({ category, officeId, maxPrice }) {
 // NOTE: check the column names with Ghada's db/users.sql (id = Cognito sub, office_id, role).
 async function getStaffOfficeId(userId) {
   const rows = await db.query(
-    `SELECT office_id FROM users.app_users WHERE id = $1 AND role = 'staff'`,
+    `SELECT office_id FROM users.app_users WHERE cognito_sub = $1 AND role = 'staff'`,
     [userId]
   );
   return rows[0] ? rows[0].office_id : null;
