@@ -302,7 +302,52 @@ async function updateOffice(req, res, next) {
   }
 }
 
+// ---------- internal routes (API Gateway checks the IAM signature first) ----------
+
+const QUOTE_FIELDS = ["carId", "startDate", "endDate"];
+
+// A real calendar date written as YYYY-MM-DD (rejects 2026-02-30)
+function isDate(s) {
+  if (typeof s !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(s + "T00:00:00Z");
+  return !isNaN(d) && d.toISOString().slice(0, 10) === s;
+}
+
+// POST /internal/quote (C10, Booking only) body: { carId, startDate, endDate }
+async function quote(req, res, next) {
+  try {
+    const body = req.body || {};
+    const unknown = unknownFields(body, QUOTE_FIELDS);
+    if (unknown.length) return res.status(400).json({ error: `Unknown field: ${unknown.join(", ")}` });
+
+    const carId = uuid(body.carId);
+    if (!carId || !isDate(body.startDate) || !isDate(body.endDate)) {
+      return res.status(400).json({ error: "carId (UUID), startDate and endDate (YYYY-MM-DD) are required" });
+    }
+
+    const days = (Date.parse(body.endDate) - Date.parse(body.startDate)) / 86400000;
+    if (days < 1 || days > 30) {
+      return res.status(400).json({ error: "endDate must be 1 to 30 days after startDate" });
+    }
+
+    const car = await service.getQuote(carId, days);
+    if (!car) return res.status(404).json({ error: "Car not found" });
+    if (car.status !== "available") return res.status(409).json({ error: `Car is ${car.status}` });
+
+    res.json({
+      carId: car.id,
+      officeId: car.office_id,
+      dailyPrice: Number(car.daily_price),
+      days,
+      total: Number(car.total),
+      currency: "EGP",
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listOffices, getCar, searchCars, createCar, updateCar, retireCar, listOfficeCars,
-  nearestOffices, updateOffice,
+  nearestOffices, updateOffice, quote,
 };
