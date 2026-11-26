@@ -208,9 +208,19 @@ async function setOfficeCoords(officeId, lat, lon) {
     [lat, lon, officeId]
   );
 }
+async function getQuote(carId, days) {
+  const rows = await db.query(
+    `SELECT id, office_id, daily_price, status, daily_price * $2 AS total
+     FROM catalogue.cars
+     WHERE id = $1`,
+    [carId, days]
+  );
+  return rows[0] || null;
+}
 
 module.exports = {
   listOffices, getCar, searchCars,
   getStaffOfficeId, createCar, updateCar, retireCar, listOfficeCars,
-  listOfficesWithCoords, getOffice, updateOffice, listOfficesMissingCoords, setOfficeCoords,
+  listOfficesWithCoords, getOffice, updateOffice, listOfficesMissingCoords, setOfficeCoords, getQuote
 };
+
