@@ -23,7 +23,7 @@ jobs:
     with:
       service-dir: services/catalogue
       stack-name: car-rental-catalogue
-      # When template.yaml gets the Cognito parameters, add dummy values here:
-      #   UserPoolId=eu-central-1_FLOCITEST UserPoolClientId=flocitestclient
-      parameter-overrides: FrontendOrigin=http://localhost:5500
+      # Dummy Cognito values: Floci only needs them to build the JWT authorizer
+      parameter-overrides: FrontendOrigin=http://localhost:5500 UserPoolId=eu-central-1_FLOCITEST UserPoolClientId=flocitestclient
       unsigned-check: POST /internal/quote
+      
