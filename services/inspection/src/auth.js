@@ -1,4 +1,4 @@
-/ services/inspection/src/auth.js
+// services/inspection/src/auth.js
 // Who is calling? Sets req.user = { id, role, officeId }.
 //
 // ON AWS: API Gateway's JWT authorizer already checked the Cognito token (bad or missing -> 401
