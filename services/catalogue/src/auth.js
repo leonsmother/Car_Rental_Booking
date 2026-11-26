@@ -8,7 +8,7 @@
 //
 // HOW IT WORKS ON YOUR LAPTOP
 //   There is no API Gateway locally, so for testing you can pretend to be a user
-//   with the header  x-dev-user: staff:1  (staff of office 1)  or  x-dev-user: customer
+//   with the header  x-dev-user: staff:<office UUID>  or  x-dev-user: customer
 //   This ONLY works when LOCAL_AUTH=true AND the code is NOT running in Lambda,
 //   so it can never be used to fake a login in the cloud.
 
@@ -31,13 +31,13 @@ function readUser(req) {
   }
 
   if (!IN_LAMBDA && process.env.LOCAL_AUTH === "true") {
-    const dev = req.get("x-dev-user"); // "staff:1" or "customer"
+    const dev = req.get("x-dev-user"); // "staff:<office UUID>" or "customer"
     if (dev) {
       const [role, office] = dev.split(":");
       return {
         id: `dev-${role}${office ? "-" + office : ""}`,
         groups: [role],
-        officeId: office ? Number(office) : null,
+        officeId: office ? office.toLowerCase() : null,
       };
     }
   }

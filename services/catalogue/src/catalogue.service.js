@@ -64,7 +64,7 @@ async function searchCars({ category, officeId, maxPrice }) {
 // NOTE: check the column names with Ghada's db/users.sql (id = Cognito sub, office_id, role).
 async function getStaffOfficeId(userId) {
   const rows = await db.query(
-    `SELECT office_id FROM users.app_users WHERE id = $1 AND role = 'staff'`,
+    `SELECT office_id FROM users.app_users WHERE cognito_sub = $1 AND role = 'staff'`,
     [userId]
   );
   return rows[0] ? rows[0].office_id : null;
@@ -140,7 +140,110 @@ async function listOfficeCars(officeId) {
   );
 }
 
+// ---------- offices and map positions (C8, C9) ----------
+
+// C8: offices that have map coordinates (the distance is worked out in the controller)
+async function listOfficesWithCoords() {
+  return db.query(
+    `SELECT id, name, city, address, latitude, longitude, phone
+       FROM catalogue.offices
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL`
+  );
+}
+
+// One office (C9 needs the current address when only the city or only the address changes)
+async function getOffice(officeId) {
+  const rows = await db.query(
+    `SELECT id, name, city, address, latitude, longitude, phone FROM catalogue.offices WHERE id = $1`,
+    [officeId]
+  );
+  return rows[0] || null;
+}
+
+// C9: change name/address/city/phone of the staff member's OWN office.
+// geo: undefined = address not changed (keep coordinates)
+//      { lat, lon } = new coordinates from Nominatim
+//      null = address changed but Nominatim failed (clear the old, now wrong, coordinates)
+async function updateOffice(officeId, changes, geo, actorId) {
+  const columns = { name: "name", address: "address", city: "city", phone: "phone" };
+  const sets = [];
+  const params = [];
+
+  for (const [field, column] of Object.entries(columns)) {
+    if (changes[field] !== undefined) {
+      params.push(changes[field]);
+      sets.push(`${column} = $${params.length}`);
+    }
+  }
+  if (geo !== undefined) {
+    params.push(geo ? geo.lat : null);
+    sets.push(`latitude = $${params.length}`);
+    params.push(geo ? geo.lon : null);
+    sets.push(`longitude = $${params.length}`);
+    sets.push(geo ? "geocoded_at = now()" : "geocoded_at = NULL");
+  }
+  params.push(officeId);
+
+  const rows = await db.query(
+    `UPDATE catalogue.offices
+        SET ${sets.join(", ")}, updated_at = now()
+      WHERE id = $${params.length}
+      RETURNING id, name, city, address, latitude, longitude, phone`,
+    params
+  );
+  if (rows[0]) await audit(actorId, "office.update", officeId, changes);
+  return rows[0] || null;
+}
+
+// Setup script: offices that still have no coordinates (e.g. right after seed.sql)
+async function listOfficesMissingCoords() {
+  return db.query(
+    `SELECT id, name, city, address FROM catalogue.offices WHERE latitude IS NULL OR longitude IS NULL`
+  );
+}
+
+async function setOfficeCoords(officeId, lat, lon) {
+  await db.query(
+    `UPDATE catalogue.offices SET latitude = $1, longitude = $2, geocoded_at = now() WHERE id = $3`,
+    [lat, lon, officeId]
+  );
+}
+async function getQuote(carId, days) {
+  const rows = await db.query(
+    `SELECT id, office_id, daily_price, status, daily_price * $2 AS total
+     FROM catalogue.cars
+     WHERE id = $1`,
+    [carId, days]
+  );
+  return rows[0] || null;
+}
+
+// C11: Inspection flagged damage -> put the car in maintenance.
+// Returns "updated", "already" (was in maintenance), "retired" or "not_found".
+async function setMaintenance(carId) {
+  const rows = await db.query(
+    `UPDATE catalogue.cars
+        SET status = 'maintenance', updated_at = now()
+      WHERE id = $1 AND status = 'available'
+      RETURNING id`,
+    [carId]
+  );
+  if (rows[0]) {
+    // No person is logged in here: the caller is the Inspection service
+    await audit("service:inspection", "car.maintenance", carId, { status: "maintenance" });
+    return "updated";
+  }
+
+  // Nothing changed: find out why
+  const current = await db.query(`SELECT status FROM catalogue.cars WHERE id = $1`, [carId]);
+  if (!current[0]) return "not_found";
+  if (current[0].status === "retired") return "retired";
+  return "already";
+}
+
 module.exports = {
   listOffices, getCar, searchCars,
   getStaffOfficeId, createCar, updateCar, retireCar, listOfficeCars,
+  listOfficesWithCoords, getOffice, updateOffice, listOfficesMissingCoords, setOfficeCoords,
+  getQuote, setMaintenance,
 };
