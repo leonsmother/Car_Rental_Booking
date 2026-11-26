@@ -20,4 +20,4 @@ jobs:
     with:
       service-dir: services/catalogue
       stack-name: car-rental-catalogue
-      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"
+      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }} UserPoolId=${{ vars.COGNITO_USER_POOL_ID }} UserPoolClientId=${{ vars.COGNITO_USER_POOL_CLIENT_ID }}"
