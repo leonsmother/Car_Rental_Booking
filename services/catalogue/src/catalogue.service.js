@@ -218,9 +218,32 @@ async function getQuote(carId, days) {
   return rows[0] || null;
 }
 
+// C11: Inspection flagged damage -> put the car in maintenance.
+// Returns "updated", "already" (was in maintenance), "retired" or "not_found".
+async function setMaintenance(carId) {
+  const rows = await db.query(
+    `UPDATE catalogue.cars
+        SET status = 'maintenance', updated_at = now()
+      WHERE id = $1 AND status = 'available'
+      RETURNING id`,
+    [carId]
+  );
+  if (rows[0]) {
+    // No person is logged in here: the caller is the Inspection service
+    await audit("service:inspection", "car.maintenance", carId, { status: "maintenance" });
+    return "updated";
+  }
+
+  // Nothing changed: find out why
+  const current = await db.query(`SELECT status FROM catalogue.cars WHERE id = $1`, [carId]);
+  if (!current[0]) return "not_found";
+  if (current[0].status === "retired") return "retired";
+  return "already";
+}
+
 module.exports = {
   listOffices, getCar, searchCars,
   getStaffOfficeId, createCar, updateCar, retireCar, listOfficeCars,
-  listOfficesWithCoords, getOffice, updateOffice, listOfficesMissingCoords, setOfficeCoords, getQuote
+  listOfficesWithCoords, getOffice, updateOffice, listOfficesMissingCoords, setOfficeCoords,
+  getQuote, setMaintenance,
 };
-

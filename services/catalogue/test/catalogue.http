@@ -207,6 +207,51 @@ x-dev-user: staff:{{officeA}}
 
 { "status": "available" }
 
+########## C11: car status (internal, Inspection only) ##########
+
+### C11: car 4 -> maintenance -> 200
+PATCH {{local}}/internal/cars/{{car4}}/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: same again -> 200 (already in maintenance, nothing changes)
+PATCH {{local}}/internal/cars/{{car4}}/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: car 2 retired -> 409
+PATCH {{local}}/internal/cars/{{car2}}/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: car does not exist -> 404
+PATCH {{local}}/internal/cars/00000000-0000-4000-8000-000000000000/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: status "available" -> 400 (Inspection may only set maintenance)
+PATCH {{local}}/internal/cars/{{car4}}/status
+Content-Type: application/json
+
+{ "status": "available" }
+
+### C11: carId not a UUID -> 400
+PATCH {{local}}/internal/cars/1/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### Reset: car 4 back to available (staff of office B) -> 200
+PUT {{local}}/cars/{{car4}}
+Content-Type: application/json
+x-dev-user: staff:{{officeB}}
+
+{ "status": "available" }
+
 ########## Cloud ##########
 
 ### Cloud health check -> 200 (once deploying works)

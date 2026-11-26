@@ -347,7 +347,30 @@ async function quote(req, res, next) {
   }
 }
 
+// PATCH /internal/cars/:carId/status (C11, Inspection only) body: { status: "maintenance" }
+async function setCarStatus(req, res, next) {
+  try {
+    const carId = uuid(req.params.carId);
+    if (!carId) return res.status(400).json({ error: "carId must be a valid ID (UUID)" });
+
+    const body = req.body || {};
+    const unknown = unknownFields(body, ["status"]);
+    if (unknown.length) return res.status(400).json({ error: `Unknown field: ${unknown.join(", ")}` });
+    if (body.status !== "maintenance") {
+      return res.status(400).json({ error: 'status must be "maintenance"' });
+    }
+
+    const result = await service.setMaintenance(carId);
+    if (result === "not_found") return res.status(404).json({ error: "Car not found" });
+    if (result === "retired") return res.status(409).json({ error: "Car is retired" });
+
+    res.json({ carId, status: "maintenance" });
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   listOffices, getCar, searchCars, createCar, updateCar, retireCar, listOfficeCars,
-  nearestOffices, updateOffice, quote,
+  nearestOffices, updateOffice, quote, setCarStatus,
 };
