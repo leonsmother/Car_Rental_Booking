@@ -1,22 +1,68 @@
-name: Deploy auth
+name: Deploy auth stack
 
 on:
   push:
     branches: [main]
-    paths:
-      - "infra/auth/**"
-      - ".github/workflows/deploy-auth.yml"
+    paths: ['infra/auth/**']
   workflow_dispatch:
 
 permissions:
-  id-token: write
+  id-token: write   # lets this run prove its identity to AWS (OIDC), no stored AWS keys
   contents: read
+
+concurrency: deploy-auth
 
 jobs:
   deploy:
-    uses: ./.github/workflows/_deploy-service.yml
-    with:
-      service-dir: infra/auth
-      stack-name: car-rental-auth
-      node-project: false   # no npm tests at this level; the trigger's code is built by SAM
-      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test and audit the Lambda
+        working-directory: infra/auth/post-confirmation
+        run: |
+          npm ci
+          npm test
+          npm audit --omit=dev --audit-level=high
+
+      - uses: aws-actions/setup-sam@v2
+
+      # TEMPORARY: shows what GitHub tells AWS. Delete this step once the sign-in works.
+      - name: Show what GitHub tells AWS
+        run: |
+          TOKEN=$(curl -sH "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -r .value)
+          node -e "const t=process.argv[1].split('.')[1];const c=JSON.parse(Buffer.from(t,'base64url'));console.log({sub:c.sub,aud:c.aud,repository:c.repository})" "$TOKEN"
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Build
+        run: sam build
+
+      - name: Deploy
+        run: |
+          sam deploy \
+            --stack-name car-rental-auth \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              FrontendOrigin=${{ vars.FRONTEND_ORIGIN }} \
+              DomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}
+
+      - name: Show the stack outputs
+        run: >
+          aws cloudformation describe-stacks
+          --stack-name car-rental-auth
+          --query "Stacks[0].Outputs"
+          --output table

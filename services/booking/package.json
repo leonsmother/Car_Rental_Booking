@@ -1,0 +1,13 @@
+{
+  "name": "car-rental-booking-service",
+  "version": "1.0.0",
+  "description": "Booking service (Lambda + Express)",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "serverless-http": "^3.2.0"
+  }
+}
