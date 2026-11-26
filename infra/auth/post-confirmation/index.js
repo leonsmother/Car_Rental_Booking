@@ -2,7 +2,7 @@
 // Cognito calls this right after a user confirms their email.
 // It does two things, both safe to repeat:
 //   1. puts the user in the "customer" group
-//   2. inserts a row in users.app_users (id = Cognito sub, role defaults to customer)
+//   2. inserts a row in users.app_users (cognito_sub = Cognito sub, role defaults to customer)
 // Staff are NEVER created here. An admin adds them to the "staff" group and sets office_id by hand.
 // The database role used (auth_trigger_role) can only INSERT into users.app_users.
 
@@ -31,11 +31,12 @@ async function defaultAddToGroup(userPoolId, username) {
   );
 }
 
-async function defaultInsertUser(id, email) {
+// The table has user_id (made by the database), cognito_sub, email, full_name (required), role (defaults to customer).
+async function defaultInsertUser(sub, email, fullName) {
   const p = await getPool();
   await p.query(
-    'INSERT INTO users.app_users (id, email) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
-    [id, email]
+    'INSERT INTO users.app_users (cognito_sub, email, full_name) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+    [sub, email, fullName]
   );
 }
 
@@ -50,7 +51,9 @@ function createHandler({ addToGroup = defaultAddToGroup, insertUser = defaultIns
     if (!sub || !email) throw new Error('Missing sub or email');
 
     try {
-      await insertUser(sub, email);
+      // full_name is required in the table. Use the name they typed if any, otherwise the part of the email before the @.
+      const fullName = (event.request.userAttributes.name || email.split('@')[0]).slice(0, 100);
+      await insertUser(sub, email, fullName);
       await addToGroup(event.userPoolId, event.userName);
       console.log(JSON.stringify({ level: 'info', msg: 'new customer created', userId: sub }));
     } catch (err) {
