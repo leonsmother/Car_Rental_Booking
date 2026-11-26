@@ -16,10 +16,12 @@ Parameters:
     Description: The website address allowed by CORS (no wildcard), e.g. https://car-rental.vercel.app
   UserPoolId:
     Type: String
-    Description: Cognito user pool ID from the auth stack (Ghada), e.g. eu-central-1_AbCdEf123
+    Default: eu-central-1_JBOCDjqqn
+    Description: Cognito user pool ID from the auth stack (Ghada). Floci deploys pass a dummy value instead.
   UserPoolClientId:
     Type: String
-    Description: Cognito app client ID from the auth stack (Ghada)
+    Default: 5svfticq897g0tfr0j08hjalde # gitleaks:allow - public Cognito app client ID, not a secret
+    Description: Cognito app client ID from the auth stack (Ghada). Floci deploys pass a dummy value instead.
   DatabaseUrlParam:
     Type: String
     Default: /car-rental/catalogue/database-url
