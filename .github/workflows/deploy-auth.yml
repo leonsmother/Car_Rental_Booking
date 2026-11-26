@@ -1,0 +1,55 @@
+name: Deploy auth stack
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/auth/**']
+  workflow_dispatch:
+
+permissions:
+  id-token: write      
+  contents: read
+
+concurrency: deploy-auth
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/auth
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Test and audit the Lambda
+        working-directory: infra/auth/post-confirmation
+        run: |
+          npm install
+          npm test
+          npm audit --omit=dev --audit-level=high
+
+      - uses: aws-actions/setup-sam@v2
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Build
+        run: sam build
+
+      - name: Deploy
+        run: |
+          sam deploy \
+            --stack-name car-rental-auth \
+            --capabilities CAPABILITY_IAM \
+            --resolve-s3 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides \
+              FrontendOrigin=${{ vars.FRONTEND_ORIGIN }} \
+              DomainPrefix=${{ vars.COGNITO_DOMAIN_PREFIX }}

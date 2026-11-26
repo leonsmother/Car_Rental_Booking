@@ -1,0 +1,8 @@
+Environment:
+  Variables:
+    DATABASE_URL_PARAM: /car-rental/inspection/DATABASE_URL
+Policies:
+  - Statement:
+      - Effect: Allow
+        Action: ssm:GetParameter
+        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/car-rental/inspection/DATABASE_URL

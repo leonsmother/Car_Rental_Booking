@@ -1,0 +1,22 @@
+name: Deploy booking
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/booking/**"
+      - "shared/**"
+      - ".github/workflows/deploy-booking.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/_deploy-service.yml
+    with:
+      service-dir: services/booking
+      stack-name: car-rental-booking
+      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"

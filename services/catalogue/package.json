@@ -1,18 +1,20 @@
 {
   "name": "car-rental-catalogue",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "private": true,
   "description": "Catalogue service (Group 24, owner: Jana)",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/local.js",
-    "test": "node --test test/*.test.js"
+    "start": "node --env-file=.env src/local.js",
+    "test": "node --test",
+    "geocode-offices": "node --env-file=.env scripts/geocode-offices.js"
   },
   "engines": {
     "node": ">=22"
   },
   "dependencies": {
     "express": "^4.21.2",
+    "pg": "^8.13.1",
     "serverless-http": "^3.2.0"
   }
 }
