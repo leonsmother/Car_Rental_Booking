@@ -86,7 +86,7 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: sam build
 
-        - name: Deploy this one stack
+      - name: Deploy this one stack
         if: steps.check.outputs.ready == 'true'
         env:
           STACK: ${{ inputs.stack-name }}
@@ -96,8 +96,9 @@ jobs:
           PARAMS=$(printf '%s' "$PARAMS" | tr '\r\n' '  ')
           echo "Parameters passed to SAM: $PARAMS"
           ARGS=()
-          if [ -n "${PARAMS// /}" ]; then
-            ARGS=(--parameter-overrides $PARAMS)
+          read -r -a PARTS <<< "$PARAMS"
+          if [ "${#PARTS[@]}" -gt 0 ]; then
+            ARGS=(--parameter-overrides "${PARTS[@]}")
           fi
           sam deploy \
             --stack-name "$STACK" \
@@ -109,8 +110,10 @@ jobs:
 
       - name: Show the stack outputs (API URL, IDs)
         if: steps.check.outputs.ready == 'true'
+        env:
+          STACK: ${{ inputs.stack-name }}
         run: >
           aws cloudformation describe-stacks
-          --stack-name ${{ inputs.stack-name }}
+          --stack-name "$STACK"
           --query "Stacks[0].Outputs"
           --output table
