@@ -1,4 +1,4 @@
-// services/inspection/src/auth.js
+/ services/inspection/src/auth.js
 // Who is calling? Sets req.user = { id, role, officeId }.
 //
 // ON AWS: API Gateway's JWT authorizer already checked the Cognito token (bad or missing -> 401
@@ -41,7 +41,7 @@ async function authenticate(req, res, next) {
     let officeId = null;
     if (role === 'staff') {
       // The office comes from OUR table, never from the token or the request
-      const { rows } = await query('SELECT office_id FROM users.app_users WHERE id = $1', [claims.sub]);
+      const { rows } = await query('SELECT office_id FROM users.app_users WHERE cognito_sub = $1', [claims.sub]);
       officeId = rows[0] ? rows[0].office_id : null;
       if (!officeId) return res.status(403).json({ error: 'Your staff account is not linked to an office' });
     }
