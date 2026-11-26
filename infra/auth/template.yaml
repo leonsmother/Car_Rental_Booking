@@ -1,133 +1,130 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Car Rental Booking - Cognito Auth Stack (User Pool, Groups, PKCE Client, PostConfirmation Trigger)
+Description: CarRent Cloud - auth stack (Cognito user pool, groups, post-confirmation trigger). Deployed first.
 
 Parameters:
+  FrontendOrigin:
+    Type: String
+    Description: Vercel URL, no trailing slash (e.g. https://car-rental.vercel.app). Used for redirects.
   DomainPrefix:
     Type: String
-    Default: car-rental-group24-auth
-    Description: Globally unique Cognito domain prefix in eu-central-1
-  CallbackUrl:
+    Description: Globally unique prefix for the Cognito login page (lowercase letters, digits, hyphens)
+  AuthDatabaseUrlParam:
     Type: String
-    Default: http://localhost:3000/callback.html
-    Description: Allowed OAuth callback URL (update with Vercel URL once deployed)
-  LogoutUrl:
-    Type: String
-    Default: http://localhost:3000/index.html
-    Description: Allowed OAuth sign-out URL
-  DatabaseUrl:
-    Type: String
-    Default: ""
-    NoEcho: true
-    Description: Optional Neon PostgreSQL connection string for syncing users.app_users
+    Default: /car-rental/auth/DATABASE_URL
+    Description: SSM SecureString holding the auth_trigger_role connection string
 
 Resources:
-  CarRentalUserPool:
+  UserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: car-rental-user-pool
-      UsernameAttributes:
-        - email
-      AutoVerifiedAttributes:
-        - email
-      MfaConfiguration: OPTIONAL
-      EnabledMfas:
-        - SOFTWARE_TOKEN_MFA
+      UserPoolName: car-rental-users
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      MfaConfiguration: OPTIONAL            # users can enrol an authenticator app (TOTP); staff should
+      EnabledMfas: [SOFTWARE_TOKEN_MFA]
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false     # customers can sign up; staff are added to the staff group by an admin
       Policies:
         PasswordPolicy:
-          MinimumLength: 8
-          RequireUppercase: true
+          MinimumLength: 12
           RequireLowercase: true
+          RequireUppercase: true
           RequireNumbers: true
-          RequireSymbols: true
-      Schema:
-        - Name: email
-          AttributeDataType: String
-          Required: true
-          Mutable: true
-        - Name: name
-          AttributeDataType: String
-          Required: false
-          Mutable: true
+          RequireSymbols: false
+      LambdaConfig:
+        PostConfirmation: !GetAtt PostConfirmationFunction.Arn
 
   CustomerGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
+      UserPoolId: !Ref UserPool
       GroupName: customer
-      Description: Default group for self-registered rental customers
-      UserPoolId: !Ref CarRentalUserPool
-      Precedence: 2
+      Description: Customers (default for every new account)
 
   StaffGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties:
+      UserPoolId: !Ref UserPool
       GroupName: staff
-      Description: Branch staff members (assigned manually by team)
-      UserPoolId: !Ref CarRentalUserPool
-      Precedence: 1
+      Description: Rental office staff (added manually by an admin)
 
-  CarRentalUserPoolClient:
+  UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
     Properties:
-      ClientName: car-rental-web-client
-      UserPoolId: !Ref CarRentalUserPool
-      GenerateSecret: false
-      ExplicitAuthFlows:
-        - ALLOW_USER_SRP_AUTH
-        - ALLOW_REFRESH_TOKEN_AUTH
-      SupportedIdentityProviders:
-        - COGNITO
+      UserPoolId: !Ref UserPool
+      ClientName: car-rental-web
+      GenerateSecret: false                 # browser app: PKCE replaces the secret
       AllowedOAuthFlowsUserPoolClient: true
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - openid
-        - email
-        - profile
+      AllowedOAuthFlows: [code]             # authorization code + PKCE, no implicit flow
+      AllowedOAuthScopes: [openid, email]
+      SupportedIdentityProviders: [COGNITO]
       CallbackURLs:
-        - !Ref CallbackUrl
+        - !Sub '${FrontendOrigin}/callback.html'
+        - http://localhost:3000/callback.html
       LogoutURLs:
-        - !Ref LogoutUrl
+        - !Sub '${FrontendOrigin}/login.html'
+        - http://localhost:3000/login.html
+      ExplicitAuthFlows: [ALLOW_REFRESH_TOKEN_AUTH]
       PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
 
-  CarRentalUserPoolDomain:
+  UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
+      UserPoolId: !Ref UserPool
       Domain: !Ref DomainPrefix
-      UserPoolId: !Ref CarRentalUserPool
 
   PostConfirmationFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: car-rental-post-confirmation
       CodeUri: post-confirmation/
       Handler: index.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Timeout: 10
+      MemorySize: 256
       Environment:
         Variables:
-          DATABASE_URL: !Ref DatabaseUrl
+          DATABASE_URL_PARAM: !Ref AuthDatabaseUrlParam
       Policies:
-        - Version: '2012-10-17'
-          Statement:
-            - Effect: Allow
-              Action:
-                - cognito-idp:AdminAddUserToGroup
-              Resource: !Sub "arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*"
-      Events:
-        PostConfirmationTrigger:
-          Type: Cognito
-          Properties:
-            UserPool: !Ref CarRentalUserPool
-            Trigger: PostConfirmation
+        - Statement:
+            - Effect: Allow                  # read ONLY its own database URL
+              Action: ssm:GetParameter
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${AuthDatabaseUrlParam}'
+            - Effect: Allow                  # put new users in the customer group
+              Action: cognito-idp:AdminAddUserToGroup
+              # Pool ARN cannot be used here (it would create a circular reference), so scope to this account's pools.
+              Resource: !Sub 'arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/*'
+
+  PostConfirmationPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref PostConfirmationFunction
+      Principal: cognito-idp.amazonaws.com
+      SourceArn: !GetAtt UserPool.Arn
 
 Outputs:
   UserPoolId:
-    Description: Cognito User Pool ID (share with Jana and Eman)
-    Value: !Ref CarRentalUserPool
+    Value: !Ref UserPool
+    Export: { Name: car-rental-auth-UserPoolId }
   UserPoolClientId:
-    Description: Cognito App Client ID (public, goes in frontend/js/config.js)
-    Value: !Ref CarRentalUserPoolClient
-  CognitoDomain:
-    Description: Cognito Hosted/Managed Login Domain URL
-    Value: !Sub "https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
+    Value: !Ref UserPoolClient
+    Export: { Name: car-rental-auth-UserPoolClientId }
+  Issuer:
+    Description: JWT authorizer issuer for the three service templates
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}'
+    Export: { Name: car-rental-auth-Issuer }
+  LoginDomain:
+    Description: Cognito login page, for frontend/js/config.js
+    Value: !Sub 'https://${DomainPrefix}.auth.${AWS::Region}.amazoncognito.com'

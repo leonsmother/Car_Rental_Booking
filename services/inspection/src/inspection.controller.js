@@ -1,9 +1,11 @@
-// backend/inspection/inspection.controller.js
+// services/inspection/src/inspection.controller.js
 // HTTP side only: validate the input, call the service, send the status code and JSON.
 // Who is allowed (401 / 403) is decided earlier by the auth and requireRole middleware.
 
 const service = require('./inspection.service');
-const { HttpError, parseUuid, parseConditionBody, parseListQuery } = require('./inspection.validation');
+const {
+  HttpError, parseUuid, parseConditionBody, parseListQuery, parsePhotoUploadBody, parsePhotoConfirmBody,
+} = require('./inspection.validation');
 
 function handle(fn) {
   return async (req, res) => {
@@ -51,4 +53,16 @@ const listFlaggedReturns = handle(async (req, res) => {
   res.status(200).json(await service.listFlaggedReturns(req.user, paging));
 });
 
-module.exports = { recordPickup, recordReturn, getReports, getComparison, listFlaggedReturns };
+const requestPhotoUpload = handle(async (req, res) => {
+  const bookingId = parseUuid(req.params.bookingId, 'bookingId');
+  const data = parsePhotoUploadBody(req.body);
+  res.status(200).json(await service.requestPhotoUpload(req.user, bookingId, data));
+});
+
+const confirmPhoto = handle(async (req, res) => {
+  const bookingId = parseUuid(req.params.bookingId, 'bookingId');
+  const data = parsePhotoConfirmBody(req.body);
+  res.status(201).json(await service.confirmPhoto(req.user, bookingId, data));
+});
+
+module.exports = { recordPickup, recordReturn, getReports, getComparison, listFlaggedReturns, requestPhotoUpload, confirmPhoto };
