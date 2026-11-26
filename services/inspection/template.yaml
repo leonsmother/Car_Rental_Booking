@@ -11,9 +11,11 @@ Parameters:
     Description: Website address allowed by CORS (no wildcard), e.g. https://car-rental.vercel.app
   UserPoolId:
     Type: String
+    Default: eu-central-1_JBOCDjqqn          # public identifier, not a secret; the workflow can override it
     Description: Cognito user pool ID (output of the auth stack)
   UserPoolClientId:
     Type: String
+    Default: 5svfticq897g0tfr0j08hjalde      # public identifier, not a secret; the workflow can override it
     Description: Cognito app client ID (output of the auth stack)
   DatabaseUrlParam:
     Type: String
@@ -193,4 +195,4 @@ Outputs:
     Value: !Sub https://${InspectionApi}.execute-api.${AWS::Region}.amazonaws.com
   PhotoBucketName:
     Description: Private photo bucket (for the evidence screenshots)
-    Value: !Ref PhotoBucket
+    Value: !Ref PhotoBucket 
