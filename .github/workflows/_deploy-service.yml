@@ -86,16 +86,26 @@ jobs:
         if: steps.check.outputs.ready == 'true'
         run: sam build
 
-      - name: Deploy this one stack
+        - name: Deploy this one stack
         if: steps.check.outputs.ready == 'true'
-        run: >
-          sam deploy
-          --stack-name ${{ inputs.stack-name }}
-          --resolve-s3
-          --capabilities CAPABILITY_IAM
-          --no-confirm-changeset
-          --no-fail-on-empty-changeset
-          ${{ inputs.parameter-overrides != '' && format('--parameter-overrides {0}', inputs.parameter-overrides) || '' }}
+        env:
+          STACK: ${{ inputs.stack-name }}
+          PARAMS: ${{ inputs.parameter-overrides }}
+        run: |
+          # Remove any hidden line breaks from the values, then show exactly what we pass
+          PARAMS=$(printf '%s' "$PARAMS" | tr '\r\n' '  ')
+          echo "Parameters passed to SAM: $PARAMS"
+          ARGS=()
+          if [ -n "${PARAMS// /}" ]; then
+            ARGS=(--parameter-overrides $PARAMS)
+          fi
+          sam deploy \
+            --stack-name "$STACK" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            "${ARGS[@]}"
 
       - name: Show the stack outputs (API URL, IDs)
         if: steps.check.outputs.ready == 'true'
