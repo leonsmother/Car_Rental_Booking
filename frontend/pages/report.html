@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.s3.eu-central-1.amazonaws.com; connect-src 'self' https://*.amazoncognito.com https://*.execute-api.eu-central-1.amazonaws.com https://*.s3.eu-central-1.amazonaws.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <title>Inspection report - CarRent Cloud</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/index.html">CarRent Cloud</a>
+    <nav>
+      <a href="/pages/pickup.html" data-role="staff" hidden>Pick-up</a>
+      <a href="/pages/return.html" data-role="staff" hidden>Return</a>
+      <a href="/pages/damage.html" data-role="staff" hidden>Damage flags</a>
+      <a href="/pages/my-bookings.html" data-role="customer" hidden>My bookings</a>
+    </nav>
+    <span class="who" data-user-email></span>
+    <a href="#" data-action="logout">Sign out</a>
+  </header>
+  <main class="container">
+    <section class="panel">
+      <h1>Inspection report</h1>
+      <form id="lookup-form" novalidate>
+        <label for="booking-id">Booking ID
+          <input id="booking-id" required autocomplete="off" spellcheck="false">
+        </label>
+        <button type="submit">Show report</button>
+      </form>
+      <div id="result" class="status" role="status" hidden></div>
+    </section>
+    <div id="reports"></div>
+  </main>
+  <script src="/js/config.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/inspection.js" data-page="report"></script>
+</body>
+</html>

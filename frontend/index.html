@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: https://*.s3.eu-central-1.amazonaws.com; connect-src 'self' https://*.amazoncognito.com https://*.execute-api.eu-central-1.amazonaws.com https://*.s3.eu-central-1.amazonaws.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <title>CarRent Cloud</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="auth-page">
+  <main class="card">
+    <h1>CarRent Cloud</h1>
+    <section data-auth="out">
+      <p class="lead">Rent a car in a few clicks.</p>
+      <a class="btn" href="/login.html">Sign in or create an account</a>
+    </section>
+    <section data-auth="in" hidden>
+      <p class="lead">Signed in as <strong data-user-email></strong></p>
+      <nav data-role="customer" hidden>
+        <a class="btn" href="/pages/request-booking.html">Book a car</a>
+        <a class="btn" href="/pages/my-bookings.html">My bookings</a>
+      </nav>
+      <nav data-role="staff" hidden>
+        <a class="btn" href="/pages/staff-requests.html">Booking requests</a>
+        <a class="btn" href="/pages/pickup.html">Pick-up inspection</a>
+        <a class="btn" href="/pages/return.html">Return inspection</a>
+        <a class="btn" href="/pages/damage.html">Damage flags</a>
+      </nav>
+      <a class="btn secondary" href="#" data-action="logout">Sign out</a>
+    </section>
+  </main>
+  <script src="/js/config.js"></script>
+  <script src="/js/auth.js"></script>
+</body>
+</html>
