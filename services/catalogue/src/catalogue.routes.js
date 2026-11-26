@@ -20,4 +20,5 @@ router.delete("/cars/:carId", requireLogin, requireStaff, controller.retireCar);
 router.get("/offices/:officeId/cars", requireLogin, requireStaff, controller.listOfficeCars);    // C6
 router.put("/offices/:officeId", requireLogin, requireStaff, controller.updateOffice);           // C9 (uses Nominatim)
 router.post("/internal/quote", controller.quote);
+router.patch("/internal/cars/:carId/status", controller.setCarStatus);
 module.exports = router;
