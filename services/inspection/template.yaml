@@ -1,8 +1,196 @@
-Environment:
-  Variables:
-    DATABASE_URL_PARAM: /car-rental/inspection/DATABASE_URL
-Policies:
-  - Statement:
-      - Effect: Allow
-        Action: ssm:GetParameter
-        Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/car-rental/inspection/DATABASE_URL
+# Inspection service - its own SAM stack: car-rental-inspection (owner: Ghada)
+# Routes I1-I7, private S3 bucket for photos, Cognito JWT authorizer, alarms.
+# Deploy the auth stack first (its user pool IDs are parameters here).
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Group 24 - Inspection service (condition reports, comparison, damage flags, photos)
+
+Parameters:
+  FrontendOrigin:
+    Type: String
+    Description: Website address allowed by CORS (no wildcard), e.g. https://car-rental.vercel.app
+  UserPoolId:
+    Type: String
+    Description: Cognito user pool ID (output of the auth stack)
+  UserPoolClientId:
+    Type: String
+    Description: Cognito app client ID (output of the auth stack)
+  DatabaseUrlParam:
+    Type: String
+    Default: /car-rental/inspection/DATABASE_URL
+    Description: SSM SecureString with the inspection_role connection string
+  BookingApiUrl:
+    Type: String
+    Default: ""
+    Description: Booking API base URL for internal calls (B8, B9). Empty until Booking is deployed.
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: SNS topic from the monitoring stack. Empty = alarms are created without an email action.
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 15
+
+Resources:
+  # ---------- private bucket for inspection photos ----------
+  PhotoBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:          # nothing in this bucket can ever be public
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:                       # lets our website upload and show photos
+        CorsRules:
+          - AllowedOrigins: [!Ref FrontendOrigin]
+            AllowedMethods: [PUT, GET]
+            AllowedHeaders: ["*"]
+            MaxAge: 600
+
+  PhotoBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PhotoBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt PhotoBucket.Arn
+              - !Sub "${PhotoBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+
+  # ---------- API ----------
+  InspectionApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins: [!Ref FrontendOrigin]
+        AllowMethods: [GET, POST, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, X-Request-Id]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
+      Auth:
+        DefaultAuthorizer: CognitoJwt          # every route needs a valid token unless it says NONE
+        Authorizers:
+          CognitoJwt:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+              audience:
+                - !Ref UserPoolClientId
+
+  InspectionFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: src/app.handler
+      Description: Inspection service (Express on Lambda)
+      Environment:
+        Variables:
+          SERVICE_NAME: inspection
+          DATABASE_URL_PARAM: !Ref DatabaseUrlParam
+          PHOTO_BUCKET: !Ref PhotoBucket
+          BOOKING_API_URL: !Ref BookingApiUrl
+      Policies:
+        - Statement:
+            - Effect: Allow                    # only its own database URL
+              Action: ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DatabaseUrlParam}
+            - Effect: Allow                    # photos only, only under reports/
+              Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
+              Resource: !Sub "${PhotoBucket.Arn}/reports/*"
+      Events:
+        Health:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: /health, Method: GET, Auth: { Authorizer: NONE } }
+        I1FlaggedReturns:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: /inspections, Method: GET }
+        I2RecordPickup:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: "/inspections/{bookingId}/pickup", Method: POST }
+        I3RecordReturn:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: "/inspections/{bookingId}/return", Method: POST }
+        I4Comparison:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: "/inspections/{bookingId}/comparison", Method: GET }
+        I5Reports:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: "/inspections/{bookingId}", Method: GET }
+        I6PhotoUploadUrl:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: "/inspections/{bookingId}/photos/upload-url", Method: POST }
+        I7PhotoConfirm:
+          Type: HttpApi
+          Properties: { ApiId: !Ref InspectionApi, Path: "/inspections/{bookingId}/photos", Method: POST }
+
+  InspectionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${InspectionFunction}
+      RetentionInDays: 14
+
+  # ---------- alarms ----------
+  ErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Inspection Lambda is failing (5xx / crashes)
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - { Name: FunctionName, Value: !Ref InspectionFunction }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+
+  Unauthorised4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Spike of 4xx answers (401/403 = someone probing, or a broken login)
+      Namespace: AWS/ApiGateway
+      MetricName: 4xx
+      Dimensions:
+        - { Name: ApiId, Value: !Ref InspectionApi }
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+
+Outputs:
+  InspectionApiUrl:
+    Description: Base URL of the Inspection API (goes in frontend/js/config.js and the other services)
+    Value: !Sub https://${InspectionApi}.execute-api.${AWS::Region}.amazonaws.com
+  PhotoBucketName:
+    Description: Private photo bucket (for the evidence screenshots)
+    Value: !Ref PhotoBucket
