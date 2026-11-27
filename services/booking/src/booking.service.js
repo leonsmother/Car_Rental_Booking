@@ -1,4 +1,4 @@
-const db = require('../../../shared/db');
+const db = require('./shared/db');
 
 const COLUMNS = `id, car_id, office_id, customer_id, start_date, end_date,
                  daily_price, total_price, status, created_at, updated_at`;

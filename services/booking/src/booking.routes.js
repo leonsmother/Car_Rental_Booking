@@ -1,6 +1,6 @@
 const express = require('express');
-const { authenticate } = require('../../../shared/auth');
-const requireRole = require('../../../shared/requireRole');
+const { authenticate } = require('./shared/auth');
+const requireRole = require('./shared/requireRole');
 const controller = require('./booking.controller');
 
 const router = express.Router();
