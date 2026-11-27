@@ -1,0 +1,12 @@
+### No token (expect 401)
+GET http://localhost:3000/bookings
+
+### Customer (expect 200 and [])
+GET http://localhost:3000/bookings
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Wrong role (expect 403)
+GET http://localhost:3000/bookings
+x-local-user: test-user-2
+x-local-groups: somethingelse

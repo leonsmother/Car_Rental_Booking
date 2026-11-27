@@ -9,7 +9,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', service: 'booking' });
 });
 
-// Booking routes (B1-B9) will be added here later
+app.use('/bookings', require('./booking.routes'));
 
 // Lambda entry point
 module.exports.handler = serverless(app);
