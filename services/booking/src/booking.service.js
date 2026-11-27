@@ -117,4 +117,46 @@ async function decideBooking(user, bookingId, decision, requestId) {
     client.release();
   }
 }
-module.exports = { listBookings, cancelBooking, decideBooking };
+// TEMPORARY: fake quote. Replace with the real Catalogue call
+// (shared/internalClient.js + CATALOGUE_API_URL) when Jana's URL is ready.
+async function getCarQuote(carId) {
+  return {
+    officeId: '11111111-1111-1111-1111-111111111111', // same office as test-staff-1
+    dailyPrice: 500,
+  };
+}
+
+// Returns { result: 'ok', booking } or { result: 'car_not_found' }
+async function createBooking(user, input, days, requestId) {
+  const quote = await getCarQuote(input.carId);
+  if (!quote) return { result: 'car_not_found' };
+  const total = quote.dailyPrice * days;
+
+  const pool = await db.getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const created = await client.query(
+      `INSERT INTO booking.bookings
+         (car_id, office_id, customer_id, start_date, end_date, daily_price, total_price)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING ${COLUMNS}`,
+      [input.carId, quote.officeId, user.id, input.startDate, input.endDate, quote.dailyPrice, total]
+    );
+    const booking = created.rows[0];
+    await client.query(
+      `INSERT INTO booking.audit_log
+         (booking_id, actor_id, actor_role, action, old_status, new_status, request_id)
+       VALUES ($1, $2, 'customer', 'created', NULL, 'pending', $3)`,
+      [booking.id, user.id, requestId]
+    );
+    await client.query('COMMIT');
+    return { result: 'ok', booking };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+module.exports = { listBookings, cancelBooking, decideBooking, createBooking };

@@ -76,3 +76,49 @@ x-local-user: test-staff-1
 x-local-groups: staff
 
 { "decision": "confirm" }
+
+### Create booking (expect 201, status pending, total 2000)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### End before start (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-14", "endDate": "2026-12-10" }
+
+### Bad car id (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "abc", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Customer id in body is rejected (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "customerId": "someone-else", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Staff tries to book (expect 403)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### No token (expect 401)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }

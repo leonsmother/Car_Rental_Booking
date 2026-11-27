@@ -6,6 +6,7 @@ const controller = require('./booking.controller');
 const router = express.Router();
 
 router.get('/', authenticate, requireRole('customer', 'staff'), controller.list);
+router.post('/', authenticate, requireRole('customer'), controller.create);
 router.delete('/:id', authenticate, requireRole('customer'), controller.cancel);
 router.patch('/:id/decision', authenticate, requireRole('staff'), controller.decide);
 module.exports = router;
