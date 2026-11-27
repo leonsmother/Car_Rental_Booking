@@ -31,4 +31,33 @@ async function cancel(req, res) {
     res.status(500).json({ error: 'Internal error' });
   }
 }
-module.exports = { list, cancel };
+async function decide(req, res) {
+  const id = req.params.id;
+  if (!UUID.test(id)) {
+    return res.status(400).json({ error: 'Invalid booking id' });
+  }
+  const decision = req.body && req.body.decision;
+  if (decision !== 'confirm' && decision !== 'decline') {
+    return res.status(400).json({ error: "decision must be 'confirm' or 'decline'" });
+  }
+  if (!req.user.officeId) {
+    return res.status(403).json({ error: 'Staff account has no office' });
+  }
+  try {
+    const out = await service.decideBooking(
+      req.user, id, decision, req.headers['x-request-id'] || null
+    );
+    if (out.result === 'not_found') return res.status(404).json({ error: 'Booking not found' });
+    if (out.result === 'wrong_status') {
+      return res.status(409).json({ error: 'Only pending bookings can be decided' });
+    }
+    if (out.result === 'overlap') {
+      return res.status(409).json({ error: 'The car is already booked for those dates' });
+    }
+    res.status(200).json(out.booking);
+  } catch (err) {
+    console.error(JSON.stringify({ msg: 'decide booking failed', error: err.message }));
+    res.status(500).json({ error: 'Internal error' });
+  }
+}
+module.exports = { list, cancel, decide };

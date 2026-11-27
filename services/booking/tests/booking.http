@@ -36,3 +36,43 @@ x-local-groups: customer
 DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
 x-local-user: test-customer-1
 x-local-groups: customer
+
+### Other office's booking (expect 404)
+PATCH http://localhost:3000/bookings/f269b8f1-46a2-49f1-a10b-cd8623ef408f/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "confirm" }
+
+### Customer tries to decide (expect 403)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "decision": "confirm" }
+
+### Bad decision value (expect 400)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "maybe" }
+
+### Confirm (expect 200, status confirmed)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "confirm" }
+
+### Confirm again (expect 409)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "confirm" }

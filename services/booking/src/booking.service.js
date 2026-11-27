@@ -67,4 +67,54 @@ async function cancelBooking(user, bookingId, requestId) {
     client.release();
   }
 }
-module.exports = { listBookings, cancelBooking};
+// Returns { result: 'ok', booking } or { result: 'not_found' | 'wrong_status' | 'overlap' }
+async function decideBooking(user, bookingId, decision, requestId) {
+  const newStatus = decision === 'confirm' ? 'confirmed' : 'declined';
+  const action = decision === 'confirm' ? 'confirmed' : 'declined';
+
+  const pool = await db.getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Office check is in the query: another office's booking looks like "not found"
+    const found = await client.query(
+      `SELECT status FROM booking.bookings
+       WHERE id = $1 AND office_id = $2
+       FOR UPDATE`,
+      [bookingId, user.officeId]
+    );
+    if (found.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { result: 'not_found' };
+    }
+
+    const oldStatus = found.rows[0].status;
+    if (oldStatus !== 'pending') {
+      await client.query('ROLLBACK');
+      return { result: 'wrong_status' };
+    }
+
+    const updated = await client.query(
+      `UPDATE booking.bookings SET status = $1 WHERE id = $2
+       RETURNING ${COLUMNS}`,
+      [newStatus, bookingId]
+    );
+    await client.query(
+      `INSERT INTO booking.audit_log
+         (booking_id, actor_id, actor_role, action, old_status, new_status, request_id)
+       VALUES ($1, $2, 'staff', $3, $4, $5, $6)`,
+      [bookingId, user.id, action, oldStatus, newStatus, requestId]
+    );
+
+    await client.query('COMMIT');
+    return { result: 'ok', booking: updated.rows[0] };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    if (err.code === '23P01') return { result: 'overlap' }; // exclusion constraint
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+module.exports = { listBookings, cancelBooking, decideBooking };
