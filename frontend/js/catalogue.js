@@ -523,4 +523,19 @@
   }
 
   window.Catalogue = { initSearchPage, initOfficesMapPage, initStaffCarsPage, initStaffOfficePage };
+
+  // Each page names itself: <script src="../js/catalogue.js" data-page="search"></script>.
+  // No inline <script> is needed, so the pages can forbid inline scripts in their CSP.
+  const pageScript = document.currentScript;
+  const starters = {
+    search: initSearchPage,
+    offices: initOfficesMapPage,
+    "staff-cars": initStaffCarsPage,
+    "staff-office": initStaffOfficePage,
+  };
+  const start = starters[pageScript && pageScript.dataset.page];
+  if (start) {
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);
+    else start();
+  }
 })();
