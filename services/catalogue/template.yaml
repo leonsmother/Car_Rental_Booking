@@ -1,11 +1,16 @@
 # Catalogue service - its own SAM stack: car-rental-catalogue (owner: Jana)
-#   Public routes  : SAM events below (no auth, anyone)
+#   Public routes  : explicit ApiGatewayV2 routes with no auth (anyone)
 #   Staff routes   : explicit ApiGatewayV2 routes with a Cognito JWT authorizer
 #                    (missing/expired token -> 401 before our code)
 #   Internal routes: explicit ApiGatewayV2 routes with AWS_IAM
 #                    (unsigned or wrong caller -> 403 before our code)
-# The protected routes are written out as plain ApiGatewayV2 resources (not the SAM "Auth:"
-# shortcut) so the protection is applied the same way in real AWS and in Floci.
+# EVERY route is written out as a plain ApiGatewayV2::Route resource (no SAM "Events:"):
+#  - Floci ignores SAM's "Auth:" shortcut, so protected routes must be explicit.
+#  - Mixing SAM events with explicit routes breaks on real AWS: when the events change, SAM
+#    re-imports the API definition and API Gateway deletes every route that is not in it
+#    (that is how the staff and internal routes disappeared after the Preflight event was added).
+#    With no events, the definition never changes, so the routes below stay.
+#  - The route logical IDs end in "Rt" so CloudFormation creates them fresh on this update.
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Group 24 - Catalogue service (cars, offices, prices)
@@ -65,48 +70,8 @@ Resources:
             - Effect: Allow
               Action: ssm:GetParameter
               Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DatabaseUrlParam}
-      Events:
-        # ---------- public routes (anyone) ----------
-        Health:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /health
-            Method: GET
-        SearchCars:          # C1
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /cars
-            Method: GET
-        GetCar:              # C2
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /cars/{carId}
-            Method: GET
-        ListOffices:         # C7
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /offices
-            Method: GET
-        NearestOffices:      # C8
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /offices/nearest
-            Method: GET
-        # Browser "may I?" checks (CORS preflight) before staff requests. No auth: the browser
-        # never sends the token on a preflight. The app answers 204 with the CORS headers.
-        Preflight:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /{proxy+}
-            Method: OPTIONS
 
-  # ---------- shared pieces for the protected routes ----------
+  # ---------- shared pieces for all routes ----------
 
   # How API Gateway hands a request to our Lambda (HTTP API event format 2.0)
   CatalogueIntegration:
@@ -140,8 +105,55 @@ Resources:
         Audience:
           - !Ref UserPoolClientId
 
+  # ---------- public routes (anyone) ----------
+  HealthRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /health
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  SearchCarsRt:       # C1
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /cars
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  GetCarRt:           # C2
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /cars/{carId}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  ListOfficesRt:      # C7
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /offices
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  NearestOfficesRt:   # C8
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /offices/nearest
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  # Browser "may I?" checks (CORS preflight). No auth: the browser never sends the token on a
+  # preflight. Real AWS answers these itself from CorsConfiguration; Floci forwards them to the
+  # app, which answers 204 with the CORS headers.
+  PreflightRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: OPTIONS /{proxy+}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+
   # ---------- staff routes (login token required) ----------
-  CreateCarRoute:            # C3
+  CreateCarRt:            # C3
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
@@ -149,7 +161,7 @@ Resources:
       Target: !Sub integrations/${CatalogueIntegration}
       AuthorizationType: JWT
       AuthorizerId: !Ref CognitoJwtAuthorizer
-  UpdateCarRoute:            # C4
+  UpdateCarRt:            # C4
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
@@ -157,7 +169,7 @@ Resources:
       Target: !Sub integrations/${CatalogueIntegration}
       AuthorizationType: JWT
       AuthorizerId: !Ref CognitoJwtAuthorizer
-  RetireCarRoute:            # C5
+  RetireCarRt:            # C5
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
@@ -165,7 +177,7 @@ Resources:
       Target: !Sub integrations/${CatalogueIntegration}
       AuthorizationType: JWT
       AuthorizerId: !Ref CognitoJwtAuthorizer
-  ListOfficeCarsRoute:       # C6
+  ListOfficeCarsRt:       # C6
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
@@ -173,7 +185,7 @@ Resources:
       Target: !Sub integrations/${CatalogueIntegration}
       AuthorizationType: JWT
       AuthorizerId: !Ref CognitoJwtAuthorizer
-  UpdateOfficeRoute:         # C9
+  UpdateOfficeRt:         # C9
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
@@ -183,14 +195,14 @@ Resources:
       AuthorizerId: !Ref CognitoJwtAuthorizer
 
   # ---------- internal routes (IAM-signed calls from other services only) ----------
-  QuoteRoute:                # C10, Booking only
+  QuoteRt:                # C10, Booking only
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
       RouteKey: POST /internal/quote
       Target: !Sub integrations/${CatalogueIntegration}
       AuthorizationType: AWS_IAM
-  SetCarStatusRoute:         # C11, Inspection only
+  SetCarStatusRt:         # C11, Inspection only
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref CatalogueApi
