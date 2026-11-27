@@ -14,5 +14,5 @@ window.APP_CONFIG = {
   // API base URLs (no trailing slash). Fill in from the stack outputs after each deploy.
   catalogueApi: '',
   bookingApi: '',
-  inspectionApi: '',
+  inspectionApi: 'https://4mwvhy5106.execute-api.eu-central-1.amazonaws.com',
 };
