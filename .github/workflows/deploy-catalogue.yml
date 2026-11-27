@@ -20,4 +20,4 @@ jobs:
     with:
       service-dir: services/catalogue
       stack-name: car-rental-catalogue
-      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}"
+      parameter-overrides: "FrontendOrigin=${{ vars.FRONTEND_ORIGIN }}" # gitleaks:allow - public Cognito app client ID, not a secret
