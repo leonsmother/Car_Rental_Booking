@@ -8,7 +8,6 @@
 
   const CATEGORIES = ["economy", "compact", "sedan", "suv", "van", "luxury"];
   const PAGES = location.pathname.includes("/pages/") ? "" : "pages/"; // path to pages/ from here
-  const OFFICE_KEY = "catalogue.staffOfficeId"; // remembered office for the staff pages
 
   // ---------- small helpers ----------
 
@@ -60,7 +59,9 @@
         401: "Your login has expired or is missing. Please log in again.",
         403: "You are not allowed to do this.",
       };
-      throw new Error((data && data.error) || messages[res.status] || "Request failed (" + res.status + ")");
+      const err = new Error((data && data.error) || messages[res.status] || "Request failed (" + res.status + ")");
+      err.status = res.status;
+      throw err;
     }
     return data;
   }
@@ -332,19 +333,35 @@
   }
 
   // ---------- staff pages: shared office picker ----------
-  // Staff can only use THEIR office: the API answers 404 for any other office,
-  // so remembering a wrong choice cannot expose another office's data.
+  // Finds the signed-in staff member's own office. The API only answers GET /offices/{id}/cars
+  // for the caller's office (any other office gets 404), so we ask about each office and keep
+  // the one that answers. The server still checks ownership on every request; this only decides
+  // what the page shows.
+  async function findMyOffice() {
+    const offices = await request("GET", "/offices");
+    for (const o of offices) {
+      try {
+        await request("GET", "/offices/" + encodeURIComponent(o.id) + "/cars", { auth: true });
+        return o;
+      } catch (e) {
+        if (e.status !== 404) throw e;   // a real error (401, 500...): show it instead of guessing
+      }
+    }
+    return null;
+  }
 
+  // Shows the staff member's office in the (locked) picker and calls onChange with its id
   async function initOfficePicker(onChange) {
     const select = $("staff-office");
-    let saved = "";
-    try { saved = localStorage.getItem(OFFICE_KEY) || ""; } catch (e) { /* storage blocked */ }
-    await fillOfficeSelect(select, { selected: saved });
-    select.addEventListener("change", () => {
-      try { localStorage.setItem(OFFICE_KEY, select.value); } catch (e) { /* ignore */ }
-      onChange(select.value);
-    });
-    if (select.value) onChange(select.value);
+    select.disabled = true;
+    select.replaceChildren(el("option", { value: "" }, "Finding your office…"));
+    const mine = await findMyOffice();
+    if (!mine) {
+      select.replaceChildren(el("option", { value: "" }, "No office"));
+      throw new Error("Your account is not linked to an office yet. Ask an admin to set your office.");
+    }
+    select.replaceChildren(el("option", { value: mine.id }, mine.name + " (" + mine.city + ")"));
+    onChange(mine.id);
   }
 
   // ---------- pages/staff-cars.html: my office's cars (C6) + add (C3), edit (C4), retire (C5) ----------
@@ -357,13 +374,15 @@
     let officeId = "";
     fillCategorySelect($("new-category"));
 
-    async function load() {
+    // note: optional [text, kind] to show once the table has reloaded (e.g. "DEF 201 saved.")
+    async function load(note) {
       tbody.replaceChildren();
       if (!officeId) return showMessage(msg, "Choose your office first.");
       showMessage(msg, "Loading cars…");
       try {
         const cars = await request("GET", "/offices/" + encodeURIComponent(officeId) + "/cars", { auth: true });
-        showMessage(msg, cars.length ? "" : "No cars in this office yet.");
+        if (note) showMessage(msg, note[0], note[1]);
+        else showMessage(msg, cars.length ? "" : "No cars in this office yet.");
         tbody.replaceChildren(...cars.map(carRow));
       } catch (e) {
         showMessage(msg, e.message, "error");
@@ -394,8 +413,7 @@
           if (!Object.keys(changes).length) return showMessage(msg, "Nothing changed.");
           try {
             await request("PUT", "/cars/" + encodeURIComponent(car.id), { body: changes, auth: true });
-            showMessage(msg, car.plate + " saved.", "ok");
-            load();
+            load([car.plate + " saved.", "ok"]);
           } catch (e) {
             showMessage(msg, e.message, "error");
           }
@@ -410,8 +428,7 @@
           if (!window.confirm("Retire " + car.plate + "? It will be hidden from customers. Its history is kept.")) return;
           try {
             await request("DELETE", "/cars/" + encodeURIComponent(car.id), { auth: true });
-            showMessage(msg, car.plate + " retired.", "ok");
-            load();
+            load([car.plate + " retired.", "ok"]);
           } catch (e) {
             showMessage(msg, e.message, "error");
           }
@@ -439,9 +456,8 @@
       };
       try {
         const created = await request("POST", "/cars", { body: car, auth: true });
-        showMessage(msg, created.plate + " added to your office.", "ok");
         addForm.reset();
-        load();
+        load([created.plate + " added to your office.", "ok"]);
       } catch (e) {
         showMessage(msg, e.message, "error");
       }
@@ -465,7 +481,8 @@
     let officeId = "";
     let current = null;
 
-    async function load() {
+    // note: optional [text, kind] to show once the form has reloaded (e.g. "Office saved.")
+    async function load(note) {
       form.hidden = true;
       if (!officeId) return showMessage(msg, "Choose your office first.");
       try {
@@ -474,7 +491,8 @@
         if (!current) return showMessage(msg, "Office not found.", "error");
         fields.forEach((f) => { $("office-" + f).value = current[f] || ""; });
         form.hidden = false;
-        showMessage(msg, "");
+        if (note) showMessage(msg, note[0], note[1]);
+        else showMessage(msg, "");
       } catch (e) {
         showMessage(msg, e.message, "error");
       }
@@ -490,8 +508,7 @@
       if (!Object.keys(changes).length) return showMessage(msg, "Nothing changed.");
       try {
         const updated = await request("PUT", "/offices/" + encodeURIComponent(officeId), { body: changes, auth: true });
-        showMessage(msg, updated.warning || "Office saved.", updated.warning ? "warn" : "ok");
-        load();
+        load([updated.warning || "Office saved.", updated.warning ? "warn" : "ok"]);
       } catch (e) {
         showMessage(msg, e.message, "error");
       }
