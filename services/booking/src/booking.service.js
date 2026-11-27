@@ -159,4 +159,59 @@ async function createBooking(user, input, days, requestId) {
     client.release();
   }
 }
-module.exports = { listBookings, cancelBooking, decideBooking, createBooking };
+// Internal (service to service). Returns the booking or null.
+async function getBookingForService(bookingId) {
+  const r = await db.query(
+    `SELECT id, customer_id, office_id, car_id, status
+     FROM booking.bookings WHERE id = $1`,
+    [bookingId]
+  );
+  return r.rows[0] || null;
+}
+
+// Internal: confirmed -> picked_up -> completed in one transaction.
+// Returns { result: 'ok', booking } or { result: 'not_found' | 'wrong_status' }
+async function completeBooking(bookingId, actorId, requestId) {
+  const pool = await db.getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const found = await client.query(
+      `SELECT status FROM booking.bookings WHERE id = $1 FOR UPDATE`,
+      [bookingId]
+    );
+    if (found.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return { result: 'not_found' };
+    }
+    if (found.rows[0].status !== 'confirmed') {
+      await client.query('ROLLBACK');
+      return { result: 'wrong_status' };
+    }
+
+    const steps = [['confirmed', 'picked_up', 'picked_up'], ['picked_up', 'completed', 'completed']];
+    let booking;
+    for (const [from, to, action] of steps) {
+      const u = await client.query(
+        `UPDATE booking.bookings SET status = $1 WHERE id = $2 RETURNING ${COLUMNS}`,
+        [to, bookingId]
+      );
+      booking = u.rows[0];
+      await client.query(
+        `INSERT INTO booking.audit_log
+           (booking_id, actor_id, actor_role, action, old_status, new_status, request_id)
+         VALUES ($1, $2, 'service', $3, $4, $5, $6)`,
+        [bookingId, actorId, action, from, to, requestId]
+      );
+    }
+
+    await client.query('COMMIT');
+    return { result: 'ok', booking };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+module.exports = { listBookings, cancelBooking, decideBooking, createBooking, getBookingForService, completeBooking};

@@ -1,3 +1,4 @@
+
 ### No token (expect 401)
 GET http://localhost:3000/bookings
 
@@ -28,7 +29,7 @@ x-local-user: test-customer-1
 x-local-groups: customer
 
 ### Cancel my booking (expect 204)
-DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+DELETE http://localhost:3000/bookings/fefb0f40-714a-4e6d-b5bc-43fb2669ff10
 x-local-user: test-customer-1
 x-local-groups: customer
 
@@ -122,3 +123,36 @@ POST http://localhost:3000/bookings
 Content-Type: application/json
 
 { "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Broken JSON (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId":
+
+### Internal get (expect 200)
+GET http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab
+x-local-caller: inspection
+
+### Internal get, unknown id (expect 404)
+GET http://localhost:3000/internal/bookings/00000000-0000-4000-8000-000000000000
+x-local-caller: inspection
+
+### Internal get, not signed (expect 403)
+GET http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab
+
+### Complete (expect 200, status completed)
+POST http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/complete
+Content-Type: application/json
+x-local-caller: inspection
+
+{ "actorId": "test-staff-1" }
+
+### Complete again (expect 409)
+POST http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/complete
+Content-Type: application/json
+x-local-caller: inspection
+
+{ "actorId": "test-staff-1" }

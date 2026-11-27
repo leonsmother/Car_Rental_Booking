@@ -104,4 +104,39 @@ async function create(req, res) {
     res.status(500).json({ error: 'Internal error' });
   }
 }
-module.exports = { list, cancel, decide, create };
+async function internalGet(req, res) {
+  if (!UUID.test(req.params.id)) return res.status(400).json({ error: 'Invalid booking id' });
+  try {
+    const b = await service.getBookingForService(req.params.id);
+    if (!b) return res.status(404).json({ error: 'Booking not found' });
+    res.status(200).json({
+      id: b.id, customerId: b.customer_id, officeId: b.office_id,
+      carId: b.car_id, status: b.status,
+    });
+  } catch (err) {
+    console.error(JSON.stringify({ msg: 'internal get failed', error: err.message }));
+    res.status(500).json({ error: 'Internal error' });
+  }
+}
+
+async function internalComplete(req, res) {
+  if (!UUID.test(req.params.id)) return res.status(400).json({ error: 'Invalid booking id' });
+  const actorId = req.body && req.body.actorId;
+  if (typeof actorId !== 'string' || actorId.length < 1 || actorId.length > 100) {
+    return res.status(400).json({ error: 'actorId is required' });
+  }
+  try {
+    const out = await service.completeBooking(
+      req.params.id, actorId, req.headers['x-request-id'] || null
+    );
+    if (out.result === 'not_found') return res.status(404).json({ error: 'Booking not found' });
+    if (out.result === 'wrong_status') {
+      return res.status(409).json({ error: 'Only confirmed bookings can be completed' });
+    }
+    res.status(200).json({ id: out.booking.id, status: out.booking.status });
+  } catch (err) {
+    console.error(JSON.stringify({ msg: 'internal complete failed', error: err.message }));
+    res.status(500).json({ error: 'Internal error' });
+  }
+}
+module.exports = { list, cancel, decide, create, internalGet, internalComplete};
