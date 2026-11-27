@@ -38,7 +38,7 @@ async function authenticate(req, res, next) {
     // Staff are tied to one office; the id comes from our table, never from the request
         if (req.user.groups.includes('staff')) {
       const r = await db.query(
-        'SELECT user_id, office_id FROM users.app_users WHERE cognito_sub = $1',
+        'SELECT office_id FROM users.app_users WHERE cognito_sub = $1',
         [req.user.id]
       );
       req.user.officeId = r.rows[0]?.office_id ?? null;

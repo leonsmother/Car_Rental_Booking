@@ -18,16 +18,23 @@
     return base.replace(/\/+$/, "");
   }
 
-  // The login token, from Ghada's auth.js if it offers one, otherwise from storage
+  // The login token from Ghada's auth.js (the same access token her api.js sends)
   function getToken() {
     try {
-      if (window.Auth && typeof window.Auth.getIdToken === "function") return window.Auth.getIdToken();
+      if (window.Auth && typeof window.Auth.getAccessToken === "function") return window.Auth.getAccessToken();
     } catch (e) { /* fall through */ }
     try {
-      return sessionStorage.getItem("id_token") || localStorage.getItem("id_token");
+      const saved = JSON.parse(sessionStorage.getItem("auth_tokens"));
+      return saved && Date.now() < saved.expiresAt ? saved.accessToken : null;
     } catch (e) {
       return null;
     }
+  }
+
+  // Staff pages: send signed-out users to the login page and customers back home (auth.js does the redirect)
+  function staffOnly() {
+    if (!window.Auth || typeof window.Auth.requireLogin !== "function") return true;
+    return window.Auth.requireLogin(["staff"]) !== null;
   }
 
   // Calls the Catalogue API and returns the JSON (or throws an Error with the API's message)
@@ -220,7 +227,7 @@
     }
 
     function seeCarsLink(o) {
-      return el("a", { className: "button", href: "../index.html#office=" + o.id }, "See cars here");
+      return el("a", { className: "button", href: "search.html#office=" + o.id }, "See cars here");
     }
 
     // Offices with the exact same position would hide each other: nudge duplicates apart a little
@@ -273,7 +280,7 @@
           o.address + ", " + o.city, el("br"),
           o.distance_km !== undefined ? o.distance_km + " km away" : "",
           o.distance_km !== undefined ? el("br") : null,
-          el("a", { href: "../index.html#office=" + o.id }, "See cars here")
+          el("a", { href: "search.html#office=" + o.id }, "See cars here")
         );
         const m = window.L.marker(pos[i], { title: o.name }).bindPopup(popup).addTo(layer);
         markerById.set(o.id, m);
@@ -343,6 +350,7 @@
   // ---------- pages/staff-cars.html: my office's cars (C6) + add (C3), edit (C4), retire (C5) ----------
 
   async function initStaffCarsPage() {
+    if (!staffOnly()) return;
     const msg = $("cars-msg");
     const tbody = $("cars-body");
     const addForm = $("add-form");
@@ -450,6 +458,7 @@
   // ---------- pages/staff-office.html: edit my office (C9) ----------
 
   async function initStaffOfficePage() {
+    if (!staffOnly()) return;
     const msg = $("office-msg");
     const form = $("office-form");
     const fields = ["name", "address", "city", "phone"];
