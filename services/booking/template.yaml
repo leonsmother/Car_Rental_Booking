@@ -9,6 +9,10 @@ Parameters:
   UserPoolClientId:
     Type: String
     Description: Cognito App Client ID (from the auth stack outputs)
+  CatalogueApiUrl:
+    Type: String
+    Default: ''
+    Description: Catalogue API URL (from Jana's stack outputs)
 
 Globals:
   Function:
@@ -25,6 +29,7 @@ Resources:
       Auth:
         # Every route needs a valid login token unless it says Authorizer: NONE
         DefaultAuthorizer: CognitoJwt
+        EnableIamAuthorizer: true   # lets internal routes accept IAM-signed calls from other services
         Authorizers:
           CognitoJwt:
             IdentitySource: $request.header.Authorization
@@ -38,6 +43,15 @@ Resources:
     Properties:
       CodeUri: .
       Handler: src/app.handler
+      Environment:
+        Variables:
+          DATABASE_URL_PARAM: /car-rental/booking/DATABASE_URL
+          CATALOGUE_API_URL: !Ref CatalogueApiUrl
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/car-rental/booking/DATABASE_URL
       Events:
         Health:
           Type: HttpApi
@@ -47,6 +61,30 @@ Resources:
             Method: GET
             Auth:
               Authorizer: NONE   # public health check, no login needed
+        ListBookings:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BookingApi
+            Path: /bookings
+            Method: GET
+        CreateBooking:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BookingApi
+            Path: /bookings
+            Method: POST
+        CancelBooking:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BookingApi
+            Path: /bookings/{id}
+            Method: DELETE
+        DecideBooking:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref BookingApi
+            Path: /bookings/{id}/decision
+            Method: PATCH
 
 Outputs:
   BookingApiUrl:
