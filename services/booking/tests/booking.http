@@ -10,3 +10,29 @@ x-local-groups: customer
 GET http://localhost:3000/bookings
 x-local-user: test-user-2
 x-local-groups: somethingelse
+
+
+### Someone else's booking (expect 404)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-customer-2
+x-local-groups: customer
+
+### Staff tries to cancel (expect 403)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-staff-1
+x-local-groups: staff
+
+### Bad id (expect 400)
+DELETE http://localhost:3000/bookings/abc
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Cancel my booking (expect 204)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Cancel again (expect 409)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-customer-1
+x-local-groups: customer

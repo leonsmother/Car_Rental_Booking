@@ -12,5 +12,23 @@ async function list(req, res) {
     res.status(500).json({ error: 'Internal error' });
   }
 }
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-module.exports = { list };
+async function cancel(req, res) {
+  const id = req.params.id;
+  if (!UUID.test(id)) {
+    return res.status(400).json({ error: 'Invalid booking id' });
+  }
+  try {
+    const result = await service.cancelBooking(req.user, id, req.headers['x-request-id'] || null);
+    if (result === 'not_found') return res.status(404).json({ error: 'Booking not found' });
+    if (result === 'wrong_status') {
+      return res.status(409).json({ error: 'Only pending or confirmed bookings can be cancelled' });
+    }
+    res.status(204).send();
+  } catch (err) {
+    console.error(JSON.stringify({ msg: 'cancel booking failed', error: err.message }));
+    res.status(500).json({ error: 'Internal error' });
+  }
+}
+module.exports = { list, cancel };

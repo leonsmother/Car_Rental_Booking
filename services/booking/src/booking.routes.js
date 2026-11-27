@@ -6,5 +6,5 @@ const controller = require('./booking.controller');
 const router = express.Router();
 
 router.get('/', authenticate, requireRole('customer', 'staff'), controller.list);
-
+router.delete('/:id', authenticate, requireRole('customer'), controller.cancel);
 module.exports = router;
