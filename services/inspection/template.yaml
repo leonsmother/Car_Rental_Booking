@@ -25,6 +25,10 @@ Parameters:
     Type: String
     Default: ""
     Description: Booking API base URL for internal calls (B8, B9). Empty until Booking is deployed.
+  CatalogueCarStatusRouteArn:
+    Type: String
+    Default: ""
+    Description: Catalogue output CarStatusRouteArn (route C11, PATCH /internal/cars/{id}/status). Empty until Catalogue is deployed.
   AlarmTopicArn:
     Type: String
     Default: ""
@@ -32,6 +36,8 @@ Parameters:
 
 Conditions:
   HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+  HasBookingApi: !Not [!Equals [!Ref BookingApiUrl, ""]]
+  HasCarStatusRoute: !Not [!Equals [!Ref CatalogueCarStatusRouteArn, ""]]
 
 Globals:
   Function:
@@ -124,6 +130,20 @@ Resources:
             - Effect: Allow                    # photos only, only under reports/
               Action: [s3:PutObject, s3:GetObject, s3:DeleteObject]
               Resource: !Sub "${PhotoBucket.Arn}/reports/*"
+            - !If                              # internal calls to Booking (B8 read, B9 complete), signed with this role
+              - HasBookingApi
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource:
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/GET/internal/bookings/*
+                  - !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/*/POST/internal/bookings/*/complete
+              - !Ref AWS::NoValue
+            - !If                              # Catalogue C11: set a car's status (e.g. maintenance after damage)
+              - HasCarStatusRoute
+              - Effect: Allow
+                Action: execute-api:Invoke
+                Resource: !Ref CatalogueCarStatusRouteArn
+              - !Ref AWS::NoValue
       Events:
         Health:
           Type: HttpApi
@@ -195,4 +215,4 @@ Outputs:
     Value: !Sub https://${InspectionApi}.execute-api.${AWS::Region}.amazonaws.com
   PhotoBucketName:
     Description: Private photo bucket (for the evidence screenshots)
-    Value: !Ref PhotoBucket 
+    Value: !Ref PhotoBucket

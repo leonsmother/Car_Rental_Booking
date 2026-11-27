@@ -1,0 +1,32 @@
+@baseUrl = http://localhost:3003
+@bookingId = cc1ff959-52dd-44d6-95d4-7f87a0ca2b55
+@staff = 235438f2-c0e1-70f4-48b6-34692f1f5920
+
+### 1. Health (no login needed)
+GET {{baseUrl}}/health
+
+### 2. Record the pick-up
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 12000, "fuelLevel": "full", "notes": "No damage" }
+
+### 3. Read the reports
+GET {{baseUrl}}/inspections/{{bookingId}}
+x-local-user: {{staff}}
+x-local-groups: staff
+
+### 4. Record the return (fuel dropped, damage found)
+POST {{baseUrl}}/inspections/{{bookingId}}/return
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 12300, "fuelLevel": "quarter", "notes": "Scratch on the door", "damageFlag": true }
+
+### 5. Damage flags for your office
+GET {{baseUrl}}/inspections?damage=true
+x-local-user: {{staff}}
+x-local-groups: staff
