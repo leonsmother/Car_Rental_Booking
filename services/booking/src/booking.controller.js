@@ -92,14 +92,25 @@ async function create(req, res) {
     return res.status(400).json({ error: 'startDate cannot be in the past' });
   }
   const days = Math.round((end - start) / 86400000);
+  if (days > 30) {
+    return res.status(400).json({ error: 'A rental can be 1 to 30 days' });
+  }
 
   try {
     const out = await service.createBooking(
       req.user, body, days, req.headers['x-request-id'] || null
     );
     if (out.result === 'car_not_found') return res.status(404).json({ error: 'Car not found' });
+    if (out.result === 'car_unavailable') return res.status(409).json({ error: 'Car is not available' });
+    if (out.result === 'bad_request') {
+      return res.status(400).json({ error: 'The car service rejected these dates' });
+    }
     res.status(201).json(out.booking);
   } catch (err) {
+    if (err.code === 'CATALOGUE_DOWN') {
+      console.error(JSON.stringify({ msg: 'catalogue call failed', error: err.message }));
+      return res.status(502).json({ error: 'The car service is not available right now' });
+    }
     console.error(JSON.stringify({ msg: 'create booking failed', error: err.message }));
     res.status(500).json({ error: 'Internal error' });
   }

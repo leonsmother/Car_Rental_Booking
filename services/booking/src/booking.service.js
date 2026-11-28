@@ -1,6 +1,8 @@
 const db = require('./shared/db');
 
-const COLUMNS = `id, car_id, office_id, customer_id, start_date, end_date,
+const COLUMNS = `id, car_id, office_id, customer_id,
+                 to_char(start_date, 'YYYY-MM-DD') AS start_date,
+                 to_char(end_date, 'YYYY-MM-DD') AS end_date,
                  daily_price, total_price, status, created_at, updated_at`;
 
 // Customer: only their own bookings. Staff: only their office's bookings.
@@ -119,18 +121,60 @@ async function decideBooking(user, bookingId, decision, requestId) {
 }
 // TEMPORARY: fake quote. Replace with the real Catalogue call
 // (shared/internalClient.js + CATALOGUE_API_URL) when Jana's URL is ready.
-async function getCarQuote(carId) {
-  return {
-    officeId: '11111111-1111-1111-1111-111111111111', // same office as test-staff-1
-    dailyPrice: 500,
-  };
+// Asks the Catalogue service for the car's office and price.
+// Returns { officeId, dailyPrice, total }, null if the car does not exist,
+// { unavailable: true } if it is not available, or { badRequest: true }.
+// If CATALOGUE_API_URL is empty, falls back to a fake quote (local tests only).
+async function getCarQuote(input, days) {
+  const base = process.env.CATALOGUE_API_URL;
+  if (!base) {
+    return { officeId: '11111111-1111-1111-1111-111111111111', dailyPrice: 500, total: 500 * days };
+  }
+  const down = (msg) => { const e = new Error(msg); e.code = 'CATALOGUE_DOWN'; return e; };
+
+  // On AWS: signed call to Catalogue C10
+  if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    const internalClient = require('./shared/internalClient');
+    let r;
+    try {
+      r = await internalClient.call('POST', `${base}/internal/quote`, {
+        carId: input.carId, startDate: input.startDate, endDate: input.endDate,
+      });
+    } catch (err) {
+      throw down('Catalogue is not reachable');
+    }
+    if (r.status === 404) return null;
+    if (r.status === 409) return { unavailable: true };
+    if (r.status === 400) return { badRequest: true };
+    if (r.status !== 200 || !r.body) throw down(`Catalogue answered ${r.status}`);
+    return { officeId: r.body.officeId, dailyPrice: r.body.dailyPrice, total: r.body.total };
+  }
+
+  // Local only: the public car route (no signing needed)
+  let res;
+  try {
+    res = await fetch(`${base}/cars/${input.carId}`, { signal: AbortSignal.timeout(5000) });
+  } catch (err) {
+    throw down('Catalogue service is not reachable');
+  }
+  if (res.status === 404) return null;
+  if (!res.ok) throw down(`Catalogue answered ${res.status}`);
+  const car = await res.json();
+  if (car.status && car.status !== 'available') return { unavailable: true };
+  const dailyPrice = Number(car.daily_price);
+  if (!car.office_id || !Number.isFinite(dailyPrice) || dailyPrice <= 0) {
+    throw down('Catalogue returned an unexpected car format');
+  }
+  return { officeId: car.office_id, dailyPrice, total: dailyPrice * days };
 }
 
 // Returns { result: 'ok', booking } or { result: 'car_not_found' }
 async function createBooking(user, input, days, requestId) {
-  const quote = await getCarQuote(input.carId);
+  const quote = await getCarQuote(input, days);
   if (!quote) return { result: 'car_not_found' };
-  const total = quote.dailyPrice * days;
+  if (quote.unavailable) return { result: 'car_unavailable' };
+  if (quote.badRequest) return { result: 'bad_request' };
+  const total = quote.total;
 
   const pool = await db.getPool();
   const client = await pool.connect();

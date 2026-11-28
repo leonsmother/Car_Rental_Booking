@@ -156,3 +156,40 @@ Content-Type: application/json
 x-local-caller: inspection
 
 { "actorId": "test-staff-1" }
+
+### Customer lists bookings (expect 200)
+GET http://localhost:3000/bookings
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Create booking, real car (expect 201, totalPrice 3400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0c0c0c0-0000-4000-8000-000000000004", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Too long (expect 400, "A rental can be 1 to 30 days")
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0c0c0c0-0000-4000-8000-000000000004", "startDate": "2026-12-10", "endDate": "2027-01-15" }
+
+### Unknown car (expect 404, "Car not found")
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "00000000-0000-4000-8000-000000000000", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Broken JSON (expect 400, "Body must be valid JSON")
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId":
