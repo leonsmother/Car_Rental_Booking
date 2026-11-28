@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://fonts.googleapis.com https://unpkg.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com; connect-src 'self' https://*.execute-api.eu-central-1.amazonaws.com http://*.execute-api.localhost.floci.io:4566 https://*.amazoncognito.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://fonts.googleapis.com https://unpkg.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com; connect-src 'self' https://*.execute-api.eu-central-1.amazonaws.com http://*.execute-api.localhost.floci.io:4566 https://*.amazoncognito.com; object-src 'none'; base-uri 'self'; form-action 'self'">
   <title>Staff: cars - CarRent Cloud</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap">
@@ -24,7 +24,7 @@
   <main>
     <h1>My office's cars</h1>
     <p class="intro">Change prices and status, add new cars, or retire old ones.</p>
-    <form class="panel" onsubmit="return false">
+    <form class="panel">
       <label>My office <select id="staff-office"></select></label>
     </form>
     <p id="cars-msg" class="msg" hidden></p>

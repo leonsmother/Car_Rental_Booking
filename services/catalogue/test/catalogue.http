@@ -5,7 +5,8 @@
 # Local (npm start)
 @local = http://localhost:3001
 # Deployed: paste the CatalogueApiUrl output here after the first deploy
-@cloud = https://REPLACE-ME.execute-api.eu-central-1.amazonaws.com
+@cloud = https://uay680z2dk.execute-api.eu-central-1.amazonaws.com
+@token = 
 
 # The fixed IDs from db/seed.sql
 @officeA = a1a1a1a1-0000-4000-8000-000000000001
