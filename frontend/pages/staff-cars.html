@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://fonts.googleapis.com https://unpkg.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com; connect-src 'self' https://*.execute-api.eu-central-1.amazonaws.com http://*.execute-api.localhost.floci.io:4566 https://*.amazoncognito.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <title>Staff: cars - CarRent Cloud</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap">
+  <link rel="stylesheet" href="../css/catalogue.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="../index.html">CarRent Cloud</a>
+    <nav>
+      <a href="search.html">Search cars</a>
+      <a href="offices-map.html">Offices</a>
+      <a href="my-bookings.html">My bookings</a>
+      <a href="staff-cars.html" aria-current="page">Staff: cars</a>
+      <a href="staff-office.html">Staff: office</a>
+      <a href="../login.html">Log in</a>
+    </nav>
+  </header>
+  <main>
+    <h1>My office's cars</h1>
+    <p class="intro">Change prices and status, add new cars, or retire old ones.</p>
+    <form class="panel" onsubmit="return false">
+      <label>My office <select id="staff-office"></select></label>
+    </form>
+    <p id="cars-msg" class="msg" hidden></p>
+    <table>
+      <thead><tr><th>Plate</th><th>Car</th><th>Category</th><th>Price / day</th><th>Status</th><th></th></tr></thead>
+      <tbody id="cars-body"></tbody>
+    </table>
+
+    <h2>Add a car</h2>
+    <form id="add-form" class="panel">
+      <label>Plate <input id="new-plate" required minlength="2" maxlength="15" pattern="[A-Za-z0-9؀-ۿ \-]+"></label>
+      <label>Make <input id="new-make" required maxlength="40"></label>
+      <label>Model <input id="new-model" required maxlength="40"></label>
+      <label>Category <select id="new-category"></select></label>
+      <label>Price / day (EGP) <input id="new-price" type="number" required min="1" max="100000" step="0.01"></label>
+      <button type="submit">Add car</button>
+    </form>
+  </main>
+  <script src="../js/config.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/catalogue.js" data-page="staff-cars"></script>
+</body>
+</html>

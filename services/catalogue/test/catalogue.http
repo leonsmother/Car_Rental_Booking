@@ -136,5 +136,123 @@ x-dev-user: staff:{{officeA}}
 
 { "name": "Not my office" }
 
+########## C10: price quote (internal, Booking only) ##########
+### Locally there is no IAM check, so these work without a login.
+### In the cloud, API Gateway returns 403 unless Booking signs the request.
+
+### C10: car 4, 4 days -> 200, total = dailyPrice x 4
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car4}}", "startDate": "2026-12-01", "endDate": "2026-12-05" }
+
+### C10: car 1 in maintenance -> 409 (run the C4 request above first)
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car1}}", "startDate": "2026-12-01", "endDate": "2026-12-05" }
+
+### C10: car 2 retired -> 409 (run the C5 request above first)
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car2}}", "startDate": "2026-12-01", "endDate": "2026-12-05" }
+
+### C10: a UUID that does not exist -> 404
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "00000000-0000-4000-8000-000000000000", "startDate": "2026-12-01", "endDate": "2026-12-05" }
+
+### C10: carId not a UUID -> 400
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "1", "startDate": "2026-12-01", "endDate": "2026-12-05" }
+
+### C10: missing carId -> 400
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "startDate": "2026-12-01", "endDate": "2026-12-05" }
+
+### C10: fake date (30 February) -> 400
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car4}}", "startDate": "2026-02-30", "endDate": "2026-03-02" }
+
+### C10: end before start -> 400
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car4}}", "startDate": "2026-12-05", "endDate": "2026-12-01" }
+
+### C10: more than 30 days -> 400
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car4}}", "startDate": "2026-12-01", "endDate": "2027-01-15" }
+
+### C10: unknown field -> 400
+POST {{local}}/internal/quote
+Content-Type: application/json
+
+{ "carId": "{{car4}}", "startDate": "2026-12-01", "endDate": "2026-12-05", "price": 1 }
+
+### Reset: put car 1 back to available after testing -> 200
+PUT {{local}}/cars/{{car1}}
+Content-Type: application/json
+x-dev-user: staff:{{officeA}}
+
+{ "status": "available" }
+
+########## C11: car status (internal, Inspection only) ##########
+
+### C11: car 4 -> maintenance -> 200
+PATCH {{local}}/internal/cars/{{car4}}/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: same again -> 200 (already in maintenance, nothing changes)
+PATCH {{local}}/internal/cars/{{car4}}/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: car 2 retired -> 409
+PATCH {{local}}/internal/cars/{{car2}}/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: car does not exist -> 404
+PATCH {{local}}/internal/cars/00000000-0000-4000-8000-000000000000/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### C11: status "available" -> 400 (Inspection may only set maintenance)
+PATCH {{local}}/internal/cars/{{car4}}/status
+Content-Type: application/json
+
+{ "status": "available" }
+
+### C11: carId not a UUID -> 400
+PATCH {{local}}/internal/cars/1/status
+Content-Type: application/json
+
+{ "status": "maintenance" }
+
+### Reset: car 4 back to available (staff of office B) -> 200
+PUT {{local}}/cars/{{car4}}
+Content-Type: application/json
+x-dev-user: staff:{{officeB}}
+
+{ "status": "available" }
+
+########## Cloud ##########
+
 ### Cloud health check -> 200 (once deploying works)
 GET {{cloud}}/health

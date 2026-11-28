@@ -1,0 +1,135 @@
+# Reusable Floci test for ANY service (owner: Jana, like _deploy-service.yml)
+# A service's own small workflow calls this with its folder, stack name and parameters.
+# GitHub starts Floci (local AWS emulator) on its temporary runner, deploys the stack into it
+# with SAM, calls the API, then throws everything away. No real AWS, no OIDC, no secrets.
+name: _floci-test-service
+
+on:
+  workflow_call:
+    inputs:
+      service-dir:
+        description: Folder of the service, e.g. services/catalogue
+        type: string
+        required: true
+      stack-name:
+        description: Stack name, e.g. car-rental-catalogue
+        type: string
+        required: true
+      parameter-overrides:
+        description: Template parameters (dummy values are fine in Floci)
+        type: string
+        default: FrontendOrigin=http://localhost:5500
+      health-path:
+        description: Public route that must return 200
+        type: string
+        default: /health
+      unsigned-check:
+        description: Optional internal route that must return 403 without an IAM signature, e.g. "POST /internal/quote"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  floci-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      AWS_ENDPOINT_URL: http://localhost:4566     # talk to Floci, not real AWS
+      AWS_ACCESS_KEY_ID: test                     # fake login, Floci accepts anything
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: eu-central-1
+      AWS_REGION: eu-central-1
+      STACK_NAME: ${{ inputs.stack-name }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.service-dir }}
+
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ inputs.service-dir }}/package-lock.json
+
+      - name: Install dependencies and run unit tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Start Floci (same compose.yaml the team uses locally)
+        working-directory: .
+        run: docker compose up -d --wait
+
+      - name: Safety check - make sure we are talking to Floci, not real AWS
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          echo "Account: $ACCOUNT"
+          [ "$ACCOUNT" = "000000000000" ] || { echo "Not talking to Floci - stopping."; exit 1; }
+
+      - name: Set up AWS SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+
+      - name: Build
+        run: sam build
+
+      - name: Deploy into Floci
+        run: |
+          sam deploy \
+            --stack-name "$STACK_NAME" \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --parameter-overrides ${{ inputs.parameter-overrides }}
+
+      - name: Find the API address in Floci
+        run: |
+          # Works for every service: ask the stack for its HTTP API resource
+          API_ID=$(aws cloudformation describe-stack-resources --stack-name "$STACK_NAME" \
+            --query "StackResources[?ResourceType=='AWS::ApiGatewayV2::Api'].PhysicalResourceId | [0]" \
+            --output text)
+          echo "API id: $API_ID"
+          echo "API_BASE=http://$API_ID.execute-api.localhost.floci.io:4566" >> "$GITHUB_ENV"
+
+      - name: Test - public route returns 200
+        env:
+          HEALTH_PATH: ${{ inputs.health-path }}
+        run: |
+          # retries because the first call starts the Lambda container (cold start)
+          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$API_BASE$HEALTH_PATH"
+          echo
+          echo "GET $HEALTH_PATH OK"
+
+      - name: Test - internal route without IAM signature returns 403
+        if: inputs.unsigned-check != ''
+        env:
+          CHECK: ${{ inputs.unsigned-check }}
+        run: |
+          METHOD=${CHECK%% *}
+          ROUTE=${CHECK#* }
+          if ! grep -qF "$ROUTE" template.yaml; then
+            echo "$ROUTE not in template.yaml yet - skipping"
+            exit 0
+          fi
+          CODE=$(curl -s -o /dev/null -w "%{http_code}" -X "$METHOD" "$API_BASE$ROUTE" \
+            -H "Content-Type: application/json" -d '{}')
+          echo "Unsigned $METHOD $ROUTE -> $CODE"
+          [ "$CODE" = "403" ] || { echo "Expected 403 (blocked by API Gateway before our code)"; exit 1; }
+
+      - name: Show Floci logs if something failed
+        if: failure()
+        working-directory: .
+        run: docker compose logs --tail 200
+
+      - name: Stop Floci
+        if: always()
+        working-directory: .
+        run: docker compose down

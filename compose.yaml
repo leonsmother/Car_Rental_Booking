@@ -1,0 +1,25 @@
+services:
+  floci:
+    image: floci/floci:latest
+    ports:
+      - "4566:4566"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: root
+    environment:
+      FLOCI_SERVICES_UI_ENABLED: "false"
+
+  floci-ui:
+    image: floci/floci-ui:latest
+    profiles: ["ui"]
+    depends_on: [floci]
+    ports:
+      - "4500:4500"
+    environment:
+      PORT: "4500"
+      FLOCI_ENDPOINT: http://floci:4566
+      AWS_ENDPOINT_URL: http://floci:4566
+      AWS_REGION: eu-central-1
+      AWS_DEFAULT_REGION: eu-central-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test

@@ -1,6 +1,16 @@
 # Catalogue service - its own SAM stack: car-rental-catalogue (owner: Jana)
-# Week 1: only GET /health. Routes C1-C11 are added here as they are built,
-# one Events entry per route (no catch-all route, so every function has a route).
+#   Public routes  : explicit ApiGatewayV2 routes with no auth (anyone)
+#   Staff routes   : explicit ApiGatewayV2 routes with a Cognito JWT authorizer
+#                    (missing/expired token -> 401 before our code)
+#   Internal routes: explicit ApiGatewayV2 routes with AWS_IAM
+#                    (unsigned or wrong caller -> 403 before our code)
+# EVERY route is written out as a plain ApiGatewayV2::Route resource (no SAM "Events:"):
+#  - Floci ignores SAM's "Auth:" shortcut, so protected routes must be explicit.
+#  - Mixing SAM events with explicit routes breaks on real AWS: when the events change, SAM
+#    re-imports the API definition and API Gateway deletes every route that is not in it
+#    (that is how the staff and internal routes disappeared after the Preflight event was added).
+#    With no events, the definition never changes, so the routes below stay.
+#  - The route logical IDs end in "Rt" so CloudFormation creates them fresh on this update.
 AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: Group 24 - Catalogue service (cars, offices, prices)
@@ -9,6 +19,18 @@ Parameters:
   FrontendOrigin:
     Type: String
     Description: The website address allowed by CORS (no wildcard), e.g. https://car-rental.vercel.app
+  UserPoolId:
+    Type: String
+    Default: eu-central-1_JBOCDjqqn
+    Description: Cognito user pool ID from the auth stack (Ghada). Floci deploys pass a dummy value instead.
+  UserPoolClientId:
+    Type: String
+    Default: 5svfticq897g0tfr0j08hjalde # gitleaks:allow - public Cognito app client ID, not a secret
+    Description: Cognito app client ID from the auth stack (Ghada). Floci deploys pass a dummy value instead.
+  DatabaseUrlParam:
+    Type: String
+    Default: /car-rental/catalogue/database-url
+    Description: Name of the SSM SecureString that holds catalogue_role's connection string
 
 Globals:
   Function:
@@ -30,7 +52,6 @@ Resources:
       DefaultRouteSettings:
         ThrottlingBurstLimit: 20
         ThrottlingRateLimit: 10
-      # Week 2: add the Cognito JWT authorizer here (needs the auth stack's IDs from Ghada)
 
   CatalogueFunction:
     Type: AWS::Serverless::Function
@@ -41,13 +62,153 @@ Resources:
       Environment:
         Variables:
           SERVICE_NAME: catalogue
-      Events:
-        Health:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref CatalogueApi
-            Path: /health
-            Method: GET
+          DATABASE_URL_PARAM: !Ref DatabaseUrlParam   # the code reads the secret from SSM at start-up
+          FRONTEND_ORIGIN: !Ref FrontendOrigin        # the only website the app sends CORS permission to
+      Policies:
+        # Least privilege: read ONE parameter (its own DB connection string), nothing else
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DatabaseUrlParam}
+
+  # ---------- shared pieces for all routes ----------
+
+  # How API Gateway hands a request to our Lambda (HTTP API event format 2.0)
+  CatalogueIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref CatalogueApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt CatalogueFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  # API Gateway may call our Lambda for any route of THIS API only
+  CatalogueInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CatalogueFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogueApi}/*
+
+  # Staff routes: API Gateway checks the Cognito login token
+  CognitoJwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref CatalogueApi
+      Name: CognitoJwt
+      AuthorizerType: JWT
+      IdentitySource:
+        - $request.header.Authorization
+      JwtConfiguration:
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+        Audience:
+          - !Ref UserPoolClientId
+
+  # ---------- public routes (anyone) ----------
+  HealthRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /health
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  SearchCarsRt:       # C1
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /cars
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  GetCarRt:           # C2
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /cars/{carId}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  ListOfficesRt:      # C7
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /offices
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  NearestOfficesRt:   # C8
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /offices/nearest
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+  # Browser "may I?" checks (CORS preflight). No auth: the browser never sends the token on a
+  # preflight. Real AWS answers these itself from CorsConfiguration; Floci forwards them to the
+  # app, which answers 204 with the CORS headers.
+  PreflightRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: OPTIONS /{proxy+}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: NONE
+
+  # ---------- staff routes (login token required) ----------
+  CreateCarRt:            # C3
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: POST /cars
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  UpdateCarRt:            # C4
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: PUT /cars/{carId}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  RetireCarRt:            # C5
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: DELETE /cars/{carId}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  ListOfficeCarsRt:       # C6
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: GET /offices/{officeId}/cars
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  UpdateOfficeRt:         # C9
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: PUT /offices/{officeId}
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+
+  # ---------- internal routes (IAM-signed calls from other services only) ----------
+  QuoteRt:                # C10, Booking only
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: POST /internal/quote
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: AWS_IAM
+  SetCarStatusRt:         # C11, Inspection only
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref CatalogueApi
+      RouteKey: PATCH /internal/cars/{carId}/status
+      Target: !Sub integrations/${CatalogueIntegration}
+      AuthorizationType: AWS_IAM
 
   CatalogueLogGroup:
     Type: AWS::Logs::LogGroup
@@ -59,3 +220,9 @@ Outputs:
   CatalogueApiUrl:
     Description: Base URL of the Catalogue API (share this with the team)
     Value: !Sub https://${CatalogueApi}.execute-api.${AWS::Region}.amazonaws.com
+  QuoteRouteArn:
+    Description: Give to Eman - Booking's role needs execute-api:Invoke on this ARN to call C10
+    Value: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogueApi}/*/POST/internal/quote
+  CarStatusRouteArn:
+    Description: Give to Ghada - Inspection's role needs execute-api:Invoke on this ARN to call C11
+    Value: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogueApi}/*/PATCH/internal/cars/*/status

@@ -9,6 +9,21 @@ const catalogueRoutes = require("./catalogue.routes");
 
 const app = express();
 
+// CORS: only our own website may call this API from a browser.
+// (Real AWS also does this in API Gateway; Floci does not, so the app does it too.)
+app.use((req, res, next) => {
+  const allowed = process.env.FRONTEND_ORIGIN;
+  if (allowed && req.headers.origin === allowed) {
+    res.set("Access-Control-Allow-Origin", allowed);
+    res.set("Vary", "Origin");
+    res.set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id");
+    res.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.set("Access-Control-Max-Age", "600");
+  }
+  if (req.method === "OPTIONS") return res.status(204).end();   // browser's "may I?" check
+  next();
+});
+
 // Reject large request bodies (part of our rate/size limiting)
 app.use(express.json({ limit: "100kb" }));
 

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://unpkg.com; style-src 'self' https://fonts.googleapis.com https://unpkg.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org https://unpkg.com; connect-src 'self' https://*.execute-api.eu-central-1.amazonaws.com http://*.execute-api.localhost.floci.io:4566 https://*.amazoncognito.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'">
+  <title>Offices - CarRent Cloud</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Comic+Neue:wght@400;700&display=swap">
+  <link rel="stylesheet" href="../css/catalogue.css">
+</head>
+<body>
+  <header>
+    <a class="brand" href="../index.html">CarRent Cloud</a>
+    <nav>
+      <a href="search.html">Search cars</a>
+      <a href="offices-map.html" aria-current="page">Offices</a>
+      <a href="my-bookings.html">My bookings</a>
+      <a href="staff-cars.html">Staff: cars</a>
+      <a href="staff-office.html">Staff: office</a>
+      <a href="../login.html">Log in</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Our offices</h1>
+    <p class="intro">See every office on the map, or find the ones nearest to you.</p>
+    <form id="nearest-form" class="filters">
+      <label>Where are you? <input id="location" type="text" maxlength="100" placeholder="e.g. Nasr City, Cairo" required></label>
+      <button type="submit">Find nearest</button>
+      <button type="button" id="show-all" class="secondary">Show all offices</button>
+    </form>
+    <p id="map-msg" class="msg" hidden></p>
+    <div id="map"></div>
+    <ul id="office-list" class="grid"></ul>
+  </main>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/catalogue.js" data-page="offices"></script>
+</body>
+</html>

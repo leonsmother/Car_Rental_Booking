@@ -1,0 +1,8 @@
+title = "CarRent Cloud gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Cognito app client ID is public (browser app, no client secret)"
+regexes = ['''5svfticq897g0tfr0j08hjalde''']
