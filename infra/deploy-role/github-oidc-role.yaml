@@ -5,7 +5,7 @@ Parameters:
   GitHubRepo:
     Type: String
     Default: leonsmother/Car_Rental_Booking
-    Description: GitHub repository in owner/repo format
+    Description: GitHub repository in owner/repo format (shown in the role name and docs only)
 
 Resources:
   GitHubOIDCProvider:
@@ -33,7 +33,9 @@ Resources:
               StringEquals:
                 token.actions.githubusercontent.com:aud: sts.amazonaws.com
               StringLike:
-                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubRepo}:*"
+                # GitHub's tokens use the numeric-ID form of the repository name.
+                # "repo:leonsmother/Car_Rental_Booking:*" does NOT match, so keep the IDs.
+                token.actions.githubusercontent.com:sub: "repo:leonsmother@279860471/Car_Rental_Booking@1461258255:*"
       Policies:
         - PolicyName: CarRentalSAMDeployPolicy
           PolicyDocument:
@@ -63,6 +65,15 @@ Resources:
                   - iam:GetRolePolicy
                   - iam:TagRole
                 Resource: "*"
+              # Needed by the monitoring stack (monthly budget alert). Only budgets named car-rental-*.
+              - Effect: Allow
+                Action:
+                  - budgets:ViewBudget
+                  - budgets:ModifyBudget
+                  - budgets:TagResource
+                  - budgets:UntagResource
+                  - budgets:ListTagsForResource
+                Resource: !Sub "arn:aws:budgets::${AWS::AccountId}:budget/car-rental-*"
 
 Outputs:
   DeployRoleArn:
