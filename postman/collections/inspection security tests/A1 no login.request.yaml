@@ -1,0 +1,4 @@
+$kind: http-request
+url: "{{baseUrl}}/inspections/{{bookingId}}"
+method: GET
+order: 1000

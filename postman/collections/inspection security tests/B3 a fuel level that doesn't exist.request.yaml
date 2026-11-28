@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{baseUrl}}/inspections/{{bookingId}}/pickup"
+method: POST
+headers:
+  x-local-user: "{{staff}}"
+  x-local-groups: staff
+body:
+  type: json
+  content: '{ "mileage": 100, "fuelLevel": "overflowing" }'
+order: 8000

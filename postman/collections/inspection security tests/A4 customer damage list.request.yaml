@@ -1,0 +1,9 @@
+$kind: http-request
+url: "{{baseUrl}}/inspections?damage=true"
+method: GET
+headers:
+  x-local-user: "{{customerId}}"
+  x-local-groups: customer
+queryParams:
+  damage: "true"
+order: 4000

@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{baseUrl}}/inspections/not-a-uuid"
+method: GET
+headers:
+  x-local-user: "{{staff}}"
+  x-local-groups: staff
+order: 6000
