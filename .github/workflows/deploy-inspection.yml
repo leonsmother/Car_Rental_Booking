@@ -25,5 +25,7 @@ jobs:
         UserPoolId=${{ vars.COGNITO_USER_POOL_ID }}
         UserPoolClientId=${{ vars.COGNITO_CLIENT_ID }}
         ${{ vars.BOOKING_API_URL != '' && format('BookingApiUrl={0}', vars.BOOKING_API_URL) || '' }}
+        ${{ vars.BOOKING_GET_ROUTE_ARN != '' && format('BookingGetRouteArn={0}', vars.BOOKING_GET_ROUTE_ARN) || '' }}
+        ${{ vars.BOOKING_COMPLETE_ROUTE_ARN != '' && format('BookingCompleteRouteArn={0}', vars.BOOKING_COMPLETE_ROUTE_ARN) || '' }}
         ${{ vars.CATALOGUE_CAR_STATUS_ROUTE_ARN != '' && format('CatalogueCarStatusRouteArn={0}', vars.CATALOGUE_CAR_STATUS_ROUTE_ARN) || '' }}
         ${{ vars.ALARM_TOPIC_ARN != '' && format('AlarmTopicArn={0}', vars.ALARM_TOPIC_ARN) || '' }}

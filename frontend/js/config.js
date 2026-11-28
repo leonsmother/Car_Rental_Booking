@@ -15,5 +15,5 @@ window.APP_CONFIG = {
   // catalogueApi: Jana's local Floci URL. The ID changes every time Floci restarts; replace it with your own.
   catalogueApi: 'https://uay680z2dk.execute-api.eu-central-1.amazonaws.com',
   bookingApi: '',
-  inspectionApi: 'https://4mwvhy5106.execute-api.eu-central-1.amazonaws.com',
+  inspectionApi: 'https://r0epbzrp8e.execute-api.eu-central-1.amazonaws.com',
 };
