@@ -1,0 +1,7 @@
+$kind: http-request
+url: "{{baseUrl}}/inspections/{{bookingId}}"
+method: GET
+headers:
+  x-local-user: "{{staff}}"
+  x-local-groups: nobody
+order: 2000

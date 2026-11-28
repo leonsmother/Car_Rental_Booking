@@ -1,0 +1,10 @@
+$kind: http-request
+url: "{{baseUrl}}/inspections/{{bookingId}}/photos/upload-url"
+method: POST
+headers:
+  x-local-user: "{{customerId}}"
+  x-local-groups: customer
+body:
+  type: json
+  content: '{ "type": "pickup", "contentType": "image/jpeg" }'
+order: 5000

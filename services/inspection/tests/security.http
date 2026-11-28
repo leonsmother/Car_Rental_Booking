@@ -1,0 +1,239 @@
+# Inspection security tests - run top to bottom against the LOCAL service (Floci + Neon).
+# Start the service first:  node --env-file=.env src/app.js
+
+@baseUrl = http://localhost:3003
+@bookingId = cc1ff959-52dd-44d6-95d4-7f87a0ca2b55
+@staff = 235438f2-c0e1-70f4-48b6-34692f1f5920
+@customerId = ccf8537c-579e-4945-a6d9-26d263de5057
+@strangerId = 11111111-1111-4111-8111-111111111111
+
+###############################################################
+# A. Who are you? (401 / 403)
+###############################################################
+
+### A1 No login at all -> 401
+GET {{baseUrl}}/inspections/{{bookingId}}
+
+### A2 Logged in but no group -> 403
+GET {{baseUrl}}/inspections/{{bookingId}}
+x-local-user: {{staff}}
+x-local-groups:
+
+### A3 Customer tries a staff route (record pick-up) -> 403
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{customerId}}
+x-local-groups: customer
+
+{ "mileage": 1, "fuelLevel": "full" }
+
+### A4 Customer tries the damage list -> 403
+GET {{baseUrl}}/inspections?damage=true
+x-local-user: {{customerId}}
+x-local-groups: customer
+
+### A5 Customer asks for a photo upload link -> 403
+POST {{baseUrl}}/inspections/{{bookingId}}/photos/upload-url
+Content-Type: application/json
+x-local-user: {{customerId}}
+x-local-groups: customer
+
+{ "type": "pickup", "contentType": "image/jpeg" }
+
+###############################################################
+# B. Bad input is refused (400)
+###############################################################
+
+### B1 Not a valid booking id -> 400
+GET {{baseUrl}}/inspections/not-a-uuid
+x-local-user: {{staff}}
+x-local-groups: staff
+
+### B2 Negative mileage -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": -5, "fuelLevel": "full" }
+
+### B3 Unknown fuel word -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 100, "fuelLevel": "overflowing" }
+
+### B4 Extra field the API does not know -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 100, "fuelLevel": "full", "recordedBy": "someone-else" }
+
+### B5 Damage flag at pick-up -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 100, "fuelLevel": "full", "damageFlag": true }
+
+### B6 Broken JSON -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 
+
+### B7 Return before pick-up -> 409
+POST {{baseUrl}}/inspections/{{bookingId}}/return
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 200, "fuelLevel": "full" }
+
+###############################################################
+# C. Stored script in the notes (XSS) - saved as plain text
+###############################################################
+
+### C1 Record the pick-up with a script in the notes -> 201
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 12000, "fuelLevel": "full", "notes": "<img src=x onerror=alert(1)><script>alert(2)</script>" }
+
+### C2 Read it back -> 200, the notes come back as plain text, not run
+GET {{baseUrl}}/inspections/{{bookingId}}
+x-local-user: {{staff}}
+x-local-groups: staff
+
+### C3 Second pick-up for the same booking -> 409
+POST {{baseUrl}}/inspections/{{bookingId}}/pickup
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 12001, "fuelLevel": "full" }
+
+###############################################################
+# D. Whose booking is it? (404 for everyone else)
+###############################################################
+
+### D1 The booking's own customer can read it -> 200 (no recordedBy field)
+GET {{baseUrl}}/inspections/{{bookingId}}
+x-local-user: {{customerId}}
+x-local-groups: customer
+
+### D2 Another customer asks for the same booking -> 404
+GET {{baseUrl}}/inspections/{{bookingId}}
+x-local-user: {{strangerId}}
+x-local-groups: customer
+
+### D3 Comparison needs both reports -> 404 until the return exists
+GET {{baseUrl}}/inspections/{{bookingId}}/comparison
+x-local-user: {{staff}}
+x-local-groups: staff
+
+###############################################################
+# E. Photos
+###############################################################
+
+### E1 Wrong file type (gif) -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/photos/upload-url
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "type": "pickup", "contentType": "image/gif" }
+
+### E2 Ask for an upload link -> 200
+# @name upload
+POST {{baseUrl}}/inspections/{{bookingId}}/photos/upload-url
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "type": "pickup", "contentType": "image/jpeg" }
+
+### E3 Upload a real small photo straight to Floci -> 200
+# Put a small file called photo.jpg next to this .http file
+PUT {{upload.response.body.uploadUrl}}
+Content-Type: image/jpeg
+
+< ./photo.jpg
+
+### E4 Confirm it -> 201
+POST {{baseUrl}}/inspections/{{bookingId}}/photos
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "type": "pickup", "key": "{{upload.response.body.key}}" }
+
+### E5 A key from another report -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/photos
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "type": "pickup", "key": "reports/00000000-0000-4000-8000-000000000000/fake.jpg" }
+
+### E6 Ask for a second link for the too-big test -> 200
+# @name big
+POST {{baseUrl}}/inspections/{{bookingId}}/photos/upload-url
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "type": "pickup", "contentType": "image/jpeg" }
+
+### E7 Upload a 6 MB file (see the PowerShell line below) -> 200 (storage accepts it)
+PUT {{big.response.body.uploadUrl}}
+Content-Type: image/jpeg
+
+< ./big.jpg
+
+### E8 Confirm it -> 400 "Photo must be a JPEG or PNG of at most 5 MB", and the file is deleted
+POST {{baseUrl}}/inspections/{{bookingId}}/photos
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "type": "pickup", "key": "{{big.response.body.key}}" }
+
+###############################################################
+# F. Return and damage flags
+###############################################################
+
+### F1 Return with lower mileage than the pick-up -> 400
+POST {{baseUrl}}/inspections/{{bookingId}}/return
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 100, "fuelLevel": "full" }
+
+### F2 Return with damage and less fuel -> 201, flagged
+POST {{baseUrl}}/inspections/{{bookingId}}/return
+Content-Type: application/json
+x-local-user: {{staff}}
+x-local-groups: staff
+
+{ "mileage": 12300, "fuelLevel": "quarter", "notes": "Scratch on the door", "damageFlag": true }
+
+### F3 Comparison -> 200, flagged: true
+GET {{baseUrl}}/inspections/{{bookingId}}/comparison
+x-local-user: {{staff}}
+x-local-groups: staff
+
+### F4 Damage list for the staff member's office -> 200
+GET {{baseUrl}}/inspections?damage=true
+x-local-user: {{staff}}
+x-local-groups: staff
