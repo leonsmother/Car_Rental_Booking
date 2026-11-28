@@ -9,6 +9,9 @@ const catalogueRoutes = require("./catalogue.routes");
 
 const app = express();
 
+// Don't announce which framework we use (removes the "X-Powered-By: Express" header)
+app.disable("x-powered-by");
+
 // CORS: only our own website may call this API from a browser.
 // (Real AWS also does this in API Gateway; Floci does not, so the app does it too.)
 app.use((req, res, next) => {
@@ -24,6 +27,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Safety headers on every answer:
+//   nosniff      -> browsers must treat our JSON as JSON, never guess it is a script or page
+//   no-store     -> browsers and proxies must not keep copies (staff data, quotes)
+//   no-referrer  -> don't leak our URLs to other sites
+//   HSTS         -> browsers only ever talk to this API over HTTPS (ignored on plain-HTTP Floci)
+app.use((req, res, next) => {
+  res.set("X-Content-Type-Options", "nosniff");
+  res.set("Cache-Control", "no-store");
+  res.set("Referrer-Policy", "no-referrer");
+  res.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  next();
+});
+
 // Reject large request bodies (part of our rate/size limiting)
 app.use(express.json({ limit: "100kb" }));
 
@@ -32,7 +48,7 @@ app.get("/health", (req, res) => {
   res.json({ service: "catalogue", status: "ok" });
 });
 
-// C1-C7 (all routes live in catalogue.routes.js)
+// C1-C11 (all routes live in catalogue.routes.js)
 app.use(catalogueRoutes);
 
 // Anything not listed above
@@ -51,7 +67,8 @@ app.use((err, req, res, next) => {
 module.exports.app = app;
 
 // On Lambda: keep the original API Gateway event on the request,
-// so auth.js can read the login details (claims) the JWT authorizer checked.
+// so auth.js can read the login details (claims) the JWT authorizer checked,
+// and callers.js can read which AWS role signed an internal request.
 module.exports.handler = serverless(app, {
   request(req, event) {
     req.lambdaEvent = event;

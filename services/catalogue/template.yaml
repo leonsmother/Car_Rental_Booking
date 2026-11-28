@@ -31,6 +31,14 @@ Parameters:
     Type: String
     Default: /car-rental/catalogue/database-url
     Description: Name of the SSM SecureString that holds catalogue_role's connection string
+  BookingCaller:
+    Type: String
+    Default: car-rental-booking-
+    Description: Start of Booking's Lambda role name. Only that role may call POST /internal/quote (C10). "*" = any signed caller (emulators only).
+  InspectionCaller:
+    Type: String
+    Default: car-rental-inspection-
+    Description: Start of Inspection's Lambda role name. Only that role may call PATCH /internal/cars/{carId}/status (C11). "*" = any signed caller (emulators only).
 
 Globals:
   Function:
@@ -64,6 +72,8 @@ Resources:
           SERVICE_NAME: catalogue
           DATABASE_URL_PARAM: !Ref DatabaseUrlParam   # the code reads the secret from SSM at start-up
           FRONTEND_ORIGIN: !Ref FrontendOrigin        # the only website the app sends CORS permission to
+          BOOKING_CALLER: !Ref BookingCaller          # only this role may ask for quotes (C10)
+          INSPECTION_CALLER: !Ref InspectionCaller    # only this role may set maintenance (C11)
       Policies:
         # Least privilege: read ONE parameter (its own DB connection string), nothing else
         - Statement:

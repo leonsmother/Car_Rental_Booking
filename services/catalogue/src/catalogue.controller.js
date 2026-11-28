@@ -2,6 +2,7 @@
 // Bad input -> 400 before the database is touched. Not found / not yours -> 404.
 
 const service = require("./catalogue.service");
+const { checkCaller } = require("./callers");
 const nominatim = require("./nominatim");
 
 const CATEGORIES = ["economy", "compact", "sedan", "suv", "van", "luxury"];
@@ -316,6 +317,9 @@ function isDate(s) {
 // POST /internal/quote (C10, Booking only) body: { carId, startDate, endDate }
 async function quote(req, res, next) {
   try {
+    // Only Booking's Lambda role may ask for quotes (API Gateway already checked the signature)
+    if (!checkCaller(req, "BOOKING_CALLER").ok) return res.status(403).json({ error: "Only the Booking service can ask for quotes" });
+
     const body = req.body || {};
     const unknown = unknownFields(body, QUOTE_FIELDS);
     if (unknown.length) return res.status(400).json({ error: `Unknown field: ${unknown.join(", ")}` });
@@ -350,6 +354,10 @@ async function quote(req, res, next) {
 // PATCH /internal/cars/:carId/status (C11, Inspection only) body: { status: "maintenance" }
 async function setCarStatus(req, res, next) {
   try {
+    // Only Inspection's Lambda role may change a car's status (API Gateway already checked the signature)
+    const caller = checkCaller(req, "INSPECTION_CALLER");
+    if (!caller.ok) return res.status(403).json({ error: "Only the Inspection service can change a car's status" });
+
     const carId = uuid(req.params.carId);
     if (!carId) return res.status(400).json({ error: "carId must be a valid ID (UUID)" });
 
@@ -360,7 +368,7 @@ async function setCarStatus(req, res, next) {
       return res.status(400).json({ error: 'status must be "maintenance"' });
     }
 
-    const result = await service.setMaintenance(carId);
+    const result = await service.setMaintenance(carId, caller.actor);   // audit log records the real caller
     if (result === "not_found") return res.status(404).json({ error: "Car not found" });
     if (result === "retired") return res.status(409).json({ error: "Car is retired" });
 
