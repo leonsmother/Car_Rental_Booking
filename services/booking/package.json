@@ -4,9 +4,16 @@
   "description": "Booking service (Lambda + Express)",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js"
+    "start": "node --env-file=.env src/app.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
   },
   "dependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@aws-sdk/credential-provider-node": "^3.972.99",
+    "@smithy/signature-v4": "^5.7.5",
     "express": "^4.21.2",
     "pg": "^8.23.1",
     "serverless-http": "^3.2.0"
