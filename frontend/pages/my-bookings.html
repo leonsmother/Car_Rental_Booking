@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self' https://*.amazoncognito.com https://*.execute-api.eu-central-1.amazonaws.com http://*.execute-api.localhost.floci.io:4566; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>My bookings - CarRent Cloud</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/index.html">CarRent Cloud</a>
+    <nav>
+      <a href="/pages/search.html">Search cars</a>
+      <a href="/pages/request-booking.html" data-role="customer" hidden>Book a car</a>
+      <a href="/pages/my-bookings.html" data-role="customer" hidden>My bookings</a>
+      <a href="/pages/staff-requests.html" data-role="staff" hidden>Booking requests</a>
+      <a href="/pages/pickup.html" data-role="staff" hidden>Pick-up</a>
+      <a href="/pages/return.html" data-role="staff" hidden>Return</a>
+    </nav>
+    <span class="who" data-user-email></span>
+    <a href="#" data-action="logout">Sign out</a>
+  </header>
+  <main class="container">
+    <section class="panel">
+      <h1>My bookings</h1>
+      <p class="lead">Your requests and rentals. You can cancel a booking while it is pending or confirmed.</p>
+      <a class="btn" href="/pages/search.html">Find a car to book</a>
+      <div id="result" class="status" role="status" hidden></div>
+    </section>
+    <section class="panel" id="list-panel" hidden>
+      <ul id="bookings" class="flag-list"></ul>
+    </section>
+  </main>
+  <script src="/js/config.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/api.js"></script>
+  <script src="/js/booking.js" data-page="mine"></script>
+</body>
+</html>

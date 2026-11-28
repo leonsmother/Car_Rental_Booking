@@ -12,7 +12,7 @@ window.APP_CONFIG = {
   logoutUri: window.location.origin + '/login.html',
 
   // API base URLs (no trailing slash). Fill in from the stack outputs after each deploy.
-  // catalogueApi: Jana's local Floci URL. The ID changes every time Floci restarts; replace it with your own.
+  // For Floci testing, swap in your local URLs but don't commit them.
   catalogueApi: 'https://uay680z2dk.execute-api.eu-central-1.amazonaws.com',
   bookingApi: 'https://h3khz315c1.execute-api.eu-central-1.amazonaws.com',
   inspectionApi: 'https://r0epbzrp8e.execute-api.eu-central-1.amazonaws.com',
