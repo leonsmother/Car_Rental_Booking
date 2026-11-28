@@ -220,7 +220,7 @@ async function getQuote(carId, days) {
 
 // C11: Inspection flagged damage -> put the car in maintenance.
 // Returns "updated", "already" (was in maintenance), "retired" or "not_found".
-async function setMaintenance(carId) {
+async function setMaintenance(carId, actor) {
   const rows = await db.query(
     `UPDATE catalogue.cars
         SET status = 'maintenance', updated_at = now()
@@ -229,8 +229,8 @@ async function setMaintenance(carId) {
     [carId]
   );
   if (rows[0]) {
-    // No person is logged in here: the caller is the Inspection service
-    await audit("service:inspection", "car.maintenance", carId, { status: "maintenance" });
+    // No person is logged in here: actor is the calling service's AWS role (from callers.js)
+    await audit(actor || "service:inspection", "car.maintenance", carId, { status: "maintenance" });
     return "updated";
   }
 
