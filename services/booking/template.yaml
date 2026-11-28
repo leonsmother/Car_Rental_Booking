@@ -1,54 +1,183 @@
-AWSTemplateFormatVersion: '2010-09-09'
+# Booking service - its own SAM stack: car-rental-booking (owner: Eman)
+#   Customer/staff routes: explicit routes with a Cognito JWT authorizer
+#   Internal routes (Inspection only): explicit routes with AWS_IAM
+# Every route is a plain ApiGatewayV2::Route (no SAM "Events:"), same as Catalogue.
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
-Description: Booking service (Eman) - own API, Lambda and permissions
+Description: Group 24 - Booking service (bookings, decisions, internal routes)
 
 Parameters:
+  FrontendOrigin:
+    Type: String
+    Description: The website address allowed by CORS (no wildcard)
   UserPoolId:
     Type: String
-    Description: Cognito User Pool ID (from the auth stack outputs)
+    Default: eu-central-1_JBOCDjqqn
+    Description: Cognito user pool ID from the auth stack (Ghada)
   UserPoolClientId:
     Type: String
-    Description: Cognito App Client ID (from the auth stack outputs)
+    Default: 5svfticq897g0tfr0j08hjalde # gitleaks:allow - public Cognito app client ID, not a secret
+    Description: Cognito app client ID from the auth stack (Ghada)
+  DatabaseUrlParam:
+    Type: String
+    Default: /car-rental/booking/database-url
+    Description: Name of the SSM SecureString that holds booking_role's connection string
+  CatalogueApiId:
+    Type: String
+    Default: uay680z2dk
+    Description: API ID of the Catalogue stack (the part before .execute-api in its URL)
 
 Globals:
   Function:
     Runtime: nodejs22.x
-    Architectures:
-      - x86_64
-    Timeout: 30
+    Architectures: [arm64]
     MemorySize: 256
+    Timeout: 10
 
 Resources:
   BookingApi:
     Type: AWS::Serverless::HttpApi
     Properties:
-      Auth:
-        # Every route needs a valid login token unless it says Authorizer: NONE
-        DefaultAuthorizer: CognitoJwt
-        Authorizers:
-          CognitoJwt:
-            IdentitySource: $request.header.Authorization
-            JwtConfiguration:
-              issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
-              audience:
-                - !Ref UserPoolClientId
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref FrontendOrigin
+        AllowMethods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+        AllowHeaders: [Authorization, Content-Type, X-Request-Id]
+        MaxAge: 600
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 20
+        ThrottlingRateLimit: 10
 
   BookingFunction:
     Type: AWS::Serverless::Function
     Properties:
       CodeUri: .
       Handler: src/app.handler
-      Events:
-        Health:
-          Type: HttpApi
-          Properties:
-            ApiId: !Ref BookingApi
-            Path: /health
-            Method: GET
-            Auth:
-              Authorizer: NONE   # public health check, no login needed
+      Description: Booking service (Express on Lambda)
+      Environment:
+        Variables:
+          SERVICE_NAME: booking
+          DATABASE_URL_PARAM: !Ref DatabaseUrlParam
+          FRONTEND_ORIGIN: !Ref FrontendOrigin
+          CATALOGUE_API_URL: !Sub https://${CatalogueApiId}.execute-api.${AWS::Region}.amazonaws.com
+      Policies:
+        # Least privilege: read ONE parameter, and call ONE Catalogue route
+        - Statement:
+            - Effect: Allow
+              Action: ssm:GetParameter
+              Resource: !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DatabaseUrlParam}
+            - Effect: Allow
+              Action: execute-api:Invoke
+              Resource: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${CatalogueApiId}/*/POST/internal/quote
+
+  BookingIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref BookingApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt BookingFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  BookingInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref BookingFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${BookingApi}/*
+
+  CognitoJwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref BookingApi
+      Name: CognitoJwt
+      AuthorizerType: JWT
+      IdentitySource:
+        - $request.header.Authorization
+      JwtConfiguration:
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPoolId}
+        Audience:
+          - !Ref UserPoolClientId
+
+  # ---------- public ----------
+  HealthRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: GET /health
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: NONE
+  PreflightRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: OPTIONS /{proxy+}
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: NONE
+
+  # ---------- customer and staff routes (login token required) ----------
+  ListBookingsRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: GET /bookings
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  CreateBookingRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: POST /bookings
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  CancelBookingRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: DELETE /bookings/{id}
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+  DecideBookingRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: PATCH /bookings/{id}/decision
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoJwtAuthorizer
+
+  # ---------- internal routes (IAM-signed calls from Inspection only) ----------
+  InternalGetBookingRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: GET /internal/bookings/{id}
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: AWS_IAM
+  InternalCompleteBookingRt:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref BookingApi
+      RouteKey: POST /internal/bookings/{id}/complete
+      Target: !Sub integrations/${BookingIntegration}
+      AuthorizationType: AWS_IAM
+
+  BookingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BookingFunction}
+      RetentionInDays: 14
 
 Outputs:
   BookingApiUrl:
-    Description: Booking API URL (goes in frontend/js/config.js and the other services)
+    Description: Base URL of the Booking API (share with the team)
     Value: !Sub https://${BookingApi}.execute-api.${AWS::Region}.amazonaws.com
+  InternalGetRouteArn:
+    Description: Give to Ghada - Inspection's role needs execute-api:Invoke on this ARN
+    Value: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${BookingApi}/*/GET/internal/bookings/*
+  InternalCompleteRouteArn:
+    Description: Give to Ghada - Inspection's role needs execute-api:Invoke on this ARN
+    Value: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${BookingApi}/*/POST/internal/bookings/*/complete

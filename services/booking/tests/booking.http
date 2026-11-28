@@ -1,0 +1,195 @@
+
+### No token (expect 401)
+GET http://localhost:3000/bookings
+
+### Customer (expect 200 and [])
+GET http://localhost:3000/bookings
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Wrong role (expect 403)
+GET http://localhost:3000/bookings
+x-local-user: test-user-2
+x-local-groups: somethingelse
+
+
+### Someone else's booking (expect 404)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-customer-2
+x-local-groups: customer
+
+### Staff tries to cancel (expect 403)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-staff-1
+x-local-groups: staff
+
+### Bad id (expect 400)
+DELETE http://localhost:3000/bookings/abc
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Cancel my booking (expect 204)
+DELETE http://localhost:3000/bookings/fefb0f40-714a-4e6d-b5bc-43fb2669ff10
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Cancel again (expect 409)
+DELETE http://localhost:3000/bookings/d285256b-42d7-4014-b658-ca9b48497cfb
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Other office's booking (expect 404)
+PATCH http://localhost:3000/bookings/f269b8f1-46a2-49f1-a10b-cd8623ef408f/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "confirm" }
+
+### Customer tries to decide (expect 403)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "decision": "confirm" }
+
+### Bad decision value (expect 400)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "maybe" }
+
+### Confirm (expect 200, status confirmed)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "confirm" }
+
+### Confirm again (expect 409)
+PATCH http://localhost:3000/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/decision
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "decision": "confirm" }
+
+### Create booking (expect 201, status pending, total 2000)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### End before start (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-14", "endDate": "2026-12-10" }
+
+### Bad car id (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "abc", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Customer id in body is rejected (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "customerId": "someone-else", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Staff tries to book (expect 403)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-staff-1
+x-local-groups: staff
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### No token (expect 401)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+
+{ "carId": "c0a80101-0000-4000-8000-000000000001", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Broken JSON (expect 400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId":
+
+### Internal get (expect 200)
+GET http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab
+x-local-caller: inspection
+
+### Internal get, unknown id (expect 404)
+GET http://localhost:3000/internal/bookings/00000000-0000-4000-8000-000000000000
+x-local-caller: inspection
+
+### Internal get, not signed (expect 403)
+GET http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab
+
+### Complete (expect 200, status completed)
+POST http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/complete
+Content-Type: application/json
+x-local-caller: inspection
+
+{ "actorId": "test-staff-1" }
+
+### Complete again (expect 409)
+POST http://localhost:3000/internal/bookings/dde2d388-553b-4d5a-b3ee-d4376dab94ab/complete
+Content-Type: application/json
+x-local-caller: inspection
+
+{ "actorId": "test-staff-1" }
+
+### Customer lists bookings (expect 200)
+GET http://localhost:3000/bookings
+x-local-user: test-customer-1
+x-local-groups: customer
+
+### Create booking, real car (expect 201, totalPrice 3400)
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0c0c0c0-0000-4000-8000-000000000004", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Too long (expect 400, "A rental can be 1 to 30 days")
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "c0c0c0c0-0000-4000-8000-000000000004", "startDate": "2026-12-10", "endDate": "2027-01-15" }
+
+### Unknown car (expect 404, "Car not found")
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId": "00000000-0000-4000-8000-000000000000", "startDate": "2026-12-10", "endDate": "2026-12-14" }
+
+### Broken JSON (expect 400, "Body must be valid JSON")
+POST http://localhost:3000/bookings
+Content-Type: application/json
+x-local-user: test-customer-1
+x-local-groups: customer
+
+{ "carId":
